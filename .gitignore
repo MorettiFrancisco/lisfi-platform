@@ -145,5 +145,17 @@ vite.config.ts.timestamp-*
 # Astro generated types
 .astro/
 
+# Local Cloudflare state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+playwright-report/
+test-results/
+tmp/
+
+# Internal specifications and working notes stay local.
+docs/
+
 # Turbo Repo
 .turbo
