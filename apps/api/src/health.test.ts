@@ -14,7 +14,7 @@ describe('API', () => {
     });
   });
   it('returns JSON 404 for unknown routes', async () => {
-    const response = await app.request('/api/clubs');
+    const response = await app.request('/missing');
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: 'Not found' });
   });

@@ -7,17 +7,22 @@
     "dev": "wrangler dev --local --ip 127.0.0.1 --port 8787",
     "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit",
+    "auth:generate": "auth generate --config ./auth-schema.config.ts --output ./src/db/auth-schema.ts --yes",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local"
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "1.7.12",
     "@lisfi/shared": "workspace:*",
+    "better-auth": "1.7.12",
     "drizzle-orm": "0.45.4",
     "hono": "4.13.13"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261019.1",
+    "auth": "1.7.12",
     "drizzle-kit": "0.31.11",
+    "miniflare": "5.20261019.2-beta",
     "wrangler": "4.152.0"
   }
 }

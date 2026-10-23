@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  use: { baseURL: 'http://127.0.0.1:5173', trace: 'retain-on-failure' },
+  use: { baseURL: 'http://127.0.0.1:5174', trace: 'retain-on-failure' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     {
@@ -15,10 +15,17 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm dev:api',
-      url: 'http://127.0.0.1:8787/api/health',
+      command:
+        'pnpm --filter @lisfi/api exec wrangler dev --local --ip 127.0.0.1 --port 8788',
+      url: 'http://127.0.0.1:8788/api/health',
       timeout: 120000,
     },
-    { command: 'pnpm dev:web', url: 'http://127.0.0.1:5173', timeout: 120000 },
+    {
+      command:
+        'pnpm --filter @lisfi/web exec vite --host 127.0.0.1 --port 5174 --strictPort',
+      url: 'http://127.0.0.1:5174',
+      env: { LISFI_API_PROXY_TARGET: 'http://127.0.0.1:8788' },
+      timeout: 120000,
+    },
   ],
 });

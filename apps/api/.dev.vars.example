@@ -1,3 +1,5 @@
-# No secrets are required in iteration 1.
-# Future Worker secrets belong in .dev.vars locally and Wrangler secrets remotely.
+# Required only for authentication. Health works without these values.
+# Copy to .dev.vars and generate AUTH_SECRET locally; never commit it.
+AUTH_BASE_URL=http://127.0.0.1:5173
+AUTH_SECRET=
 # Never put secrets in VITE_* variables (they are included in the browser bundle).

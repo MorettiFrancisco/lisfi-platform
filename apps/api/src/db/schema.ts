@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { check, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+export * from './auth-schema';
+export * from './access-schema';
 
 // No global uniqueness for ACTIVE until LISFI defines competitive contexts.
 export const seasons = sqliteTable(
