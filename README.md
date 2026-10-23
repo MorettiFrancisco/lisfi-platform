@@ -51,7 +51,7 @@ apps/
   api/migrations/      SQL y snapshots generados por Drizzle
 packages/shared/src/   Contratos Zod y tipos públicos; sin acceso a DB ni secretos
 tests/e2e/             Integración navegador → Vite → Worker
-docs/                  Documentación interna local, excluida de Git
+docs/                  Documentación Markdown; PDF y otros adjuntos excluidos de Git
 .github/workflows/     Validación automática; sin despliegue
 ```
 
@@ -161,5 +161,5 @@ el dominio/ruta `/api/*` del Worker o definir orígenes explícitos y cookies se
 El identificador D1 local debe reemplazarse mediante configuración del entorno de
 destino; crear recursos, aplicar migraciones remotas y desplegar requiere confirmación.
 
-Las especificaciones y notas de trabajo se conservan localmente en `docs/`,
-excluida de Git. El README contiene las instrucciones públicas del proyecto.
+Las especificaciones y notas de trabajo Markdown se versionan en `docs/`.
+Los PDF y demás adjuntos se conservan únicamente en el equipo local.

@@ -154,8 +154,10 @@ playwright-report/
 test-results/
 tmp/
 
-# Internal specifications and working notes stay local.
-docs/
+# Version Markdown documentation only; PDFs and other attachments stay local.
+docs/**
+!docs/**/
+!docs/**/*.md
 
 # Turbo Repo
 .turbo
