@@ -106,6 +106,37 @@ documenta el aviso y se evita sustituirlas manualmente por versiones incompatibl
 
 ## Referencias oficiales
 
+### Actualización: alta inicial y enrolamiento MFA visual (iteración 2B)
+
+Se agrega `POST /api/bootstrap`, separado de Better Auth y deshabilitado sin una
+capacidad aleatoria temporal configurada por el operador. Requiere mismo origen,
+limita intentos persistentemente y nunca habilita signup público. El hash de la
+contraseña usa `better-auth/crypto`; el esquema de credenciales es el existente.
+Se crea una identidad nueva, sin afirmar verificación de correo ni iniciar sesión.
+
+El batch D1 incluye el registro singleton de alta, usuario, credencial y rol.
+Una restricción CHECK impide usarlo cuando ya hay asignaciones administrativas;
+la PK impide dos ganadores concurrentes. Un fallo en cualquiera de las escrituras
+revierte todo el lote. El registro conserva ID de usuario y fecha como auditoría
+mínima, sin FK en cascada: eliminar la cuenta no debe reabrir el alta inicial.
+
+La UI conduce desde el alta al login y al enrolamiento TOTP. QR y códigos quedan
+en memoria del componente; el QR se renderiza localmente. La verificación activa
+MFA mediante Better Auth y luego se consulta `/api/me` con la cookie renovada.
+Los permisos administrativos comprueban flag MFA y registro TOTP verificado,
+evitando conceder acceso ante una actualización parcial. Se ofrece ingreso con
+código de recuperación. No se introduce administración de otros administradores,
+restablecimiento de MFA, invitaciones ni recuperación por correo.
+
+Playwright usa un Worker con configuración, secretos aleatorios y D1 en un
+directorio temporal por ejecución. Aplica todas las migraciones y comprueba alta,
+enrolamiento, login TOTP y recuperación sin tocar `.dev.vars` ni D1 del desarrollador.
+Los fixtures y capturas son exclusivamente sintéticos. La prueba de bootstrap corre
+una sola vez y cambia a viewport móvil durante el flujo, por su naturaleza singleton.
+
+Referencias: [batch transaccional D1](https://developers.cloudflare.com/d1/worker-api/d1-database/)
+y [enrolamiento y recuperación Better Auth](https://better-auth.com/docs/plugins/2fa).
+
 ### Actualización: base de autenticación (iteración 2A)
 
 Se implementó la base de API con Better Auth 1.7.12 y el adaptador oficial Drizzle,

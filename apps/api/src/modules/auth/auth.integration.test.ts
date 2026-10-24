@@ -14,6 +14,7 @@ import {
   clubMemberships,
   globalRoleAssignments,
   session,
+  twoFactor,
 } from '../../db/schema';
 import type { Bindings } from '../../env';
 
@@ -141,8 +142,11 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   cookie = '';
+  delete env.BOOTSTRAP_TOKEN;
+  delete env.BOOTSTRAP_EXPIRES_AT;
   ipCounter++;
   for (const table of [
+    'initial_admin_bootstrap',
     'club_memberships',
     'global_role_assignments',
     'clubs',
@@ -153,11 +157,281 @@ beforeEach(async () => {
     await env.DB.prepare(`DELETE FROM "${table}"`).run();
   }
 });
+
+describe('controlled first-administrator enrollment', () => {
+  function enableBootstrap() {
+    env.BOOTSTRAP_TOKEN = randomBytes(32).toString('hex');
+    env.BOOTSTRAP_EXPIRES_AT = new Date(Date.now() + 60000).toISOString();
+    return { 'x-bootstrap-token': env.BOOTSTRAP_TOKEN };
+  }
+  const details = {
+    name: 'First administrator',
+    email: 'first@example.invalid',
+    password,
+  };
+
+  it('fails closed without a valid expiring token and trusted origin', async () => {
+    expect((await request('/api/bootstrap', details)).status).toBe(404);
+    const headers = enableBootstrap();
+    env.BOOTSTRAP_EXPIRES_AT = new Date(0).toISOString();
+    expect((await request('/api/bootstrap', details, headers)).status).toBe(
+      404,
+    );
+    env.BOOTSTRAP_EXPIRES_AT = 'invalid';
+    expect((await request('/api/bootstrap', details, headers)).status).toBe(
+      404,
+    );
+    env.BOOTSTRAP_EXPIRES_AT = new Date(Date.now() + 60000).toISOString();
+    expect(
+      (
+        await request('/api/bootstrap', details, {
+          ...headers,
+          origin: 'https://evil.invalid',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await request('/api/bootstrap', details, { ...headers, origin: '' }))
+        .status,
+    ).toBe(403);
+    expect((await request('/api/bootstrap', details)).status).toBe(403);
+    expect(
+      (
+        await request('/api/bootstrap', details, {
+          'x-bootstrap-token': 'wrong',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          '/api/bootstrap',
+          { ...details, password: 'short' },
+          headers,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(
+          '/api/bootstrap',
+          { ...details, role: 'LEAGUE_ADMIN' },
+          headers,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(
+          '/api/bootstrap',
+          { ...details, name: 'x'.repeat(9000) },
+          headers,
+        )
+      ).status,
+    ).toBe(413);
+    expect(await createDb(env.DB).select().from(user)).toHaveLength(0);
+  });
+
+  it('limits failed token attempts persistently', async () => {
+    const headers = enableBootstrap();
+    for (let i = 0; i < 5; i++)
+      expect((await request('/api/bootstrap', details)).status).toBe(403);
+    const response = await request('/api/bootstrap', details, headers);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('60');
+    expect(await createDb(env.DB).select().from(user)).toHaveLength(0);
+  });
+
+  it('creates a login-compatible admin once, without verified email or a session', async () => {
+    const headers = enableBootstrap();
+    const response = await request(
+      '/api/bootstrap',
+      { ...details, email: ' FIRST@example.invalid ' },
+      headers,
+    );
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    const users = await createDb(env.DB).select().from(user);
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({
+      email: details.email,
+      emailVerified: false,
+      twoFactorEnabled: false,
+    });
+    const signedIn = await request('/api/auth/sign-in/email', {
+      email: details.email,
+      password,
+    });
+    expect(signedIn.status).toBe(200);
+    saveCookies(signedIn);
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      roles: ['LEAGUE_ADMIN'],
+      mfaRequired: true,
+    });
+    expect((await request('/api/clubs/any')).status).toBe(403);
+    expect(
+      (
+        await request(
+          '/api/bootstrap',
+          { ...details, email: 'second@example.invalid' },
+          headers,
+        )
+      ).status,
+    ).toBe(409);
+    await env.DB.prepare('DELETE FROM global_role_assignments').run();
+    await env.DB.prepare('DELETE FROM "user"').run();
+    // Removing accounts or rotating the capability cannot reopen a completed bootstrap.
+    expect(
+      (await request('/api/bootstrap', details, enableBootstrap())).status,
+    ).toBe(409);
+  });
+
+  it('serializes concurrent enrollment and leaves only the winning account', async () => {
+    const headers = enableBootstrap();
+    const responses = await Promise.all([
+      request('/api/bootstrap', details, headers),
+      request(
+        '/api/bootstrap',
+        { ...details, email: 'other@example.invalid' },
+        headers,
+      ),
+    ]);
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    for (const table of [
+      'user',
+      'account',
+      'global_role_assignments',
+      'initial_admin_bootstrap',
+    ]) {
+      expect(
+        await env.DB.prepare(`SELECT count(*) AS total FROM "${table}"`).first(
+          'total',
+        ),
+      ).toBe(1);
+    }
+  });
+
+  it('does not promote existing accounts and rolls back the bootstrap marker', async () => {
+    await seedUser('first');
+    const headers = enableBootstrap();
+    expect((await request('/api/bootstrap', details, headers)).status).toBe(
+      409,
+    );
+    expect(
+      await createDb(env.DB).select().from(globalRoleAssignments),
+    ).toHaveLength(0);
+    expect(
+      await env.DB.prepare('SELECT * FROM initial_admin_bootstrap').first(),
+    ).toBeNull();
+    expect(
+      (
+        await request(
+          '/api/bootstrap',
+          { ...details, email: 'new@example.invalid' },
+          headers,
+        )
+      ).status,
+    ).toBe(201);
+  });
+
+  it('refuses bootstrap when a historical administrator assignment exists', async () => {
+    await seedUser('old-admin', true);
+    await createDb(env.DB)
+      .update(globalRoleAssignments)
+      .set({ revokedAt: new Date().toISOString() });
+    expect(
+      (await request('/api/bootstrap', details, enableBootstrap())).status,
+    ).toBe(409);
+    expect(await createDb(env.DB).select().from(user)).toHaveLength(1);
+  });
+
+  it('rolls back the account, credentials and marker if the role write fails', async () => {
+    const headers = enableBootstrap();
+    await env.DB.prepare(
+      `CREATE TRIGGER fail_initial_role BEFORE INSERT ON global_role_assignments BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
+    ).run();
+    try {
+      expect((await request('/api/bootstrap', details, headers)).status).toBe(
+        500,
+      );
+      for (const table of [
+        'user',
+        'account',
+        'global_role_assignments',
+        'initial_admin_bootstrap',
+      ]) {
+        expect(
+          await env.DB.prepare(
+            `SELECT count(*) AS total FROM "${table}"`,
+          ).first('total'),
+        ).toBe(0);
+      }
+    } finally {
+      await env.DB.prepare('DROP TRIGGER fail_initial_role').run();
+    }
+    expect((await request('/api/bootstrap', details, headers)).status).toBe(
+      201,
+    );
+  });
+});
 afterAll(async () => {
   await mf?.dispose();
 });
 
 describe('authentication and live club permissions on D1', () => {
+  it('requires actual authenticator verification and consumes recovery codes once', async () => {
+    await seedUser('admin', true);
+    await login('admin');
+    const wrongPassword = await request('/api/auth/two-factor/enable', {
+      password: 'incorrect-password',
+    });
+    expect(wrongPassword.ok).toBe(false);
+    expect(await createDb(env.DB).select().from(twoFactor)).toHaveLength(0);
+    const enabled = await request('/api/auth/two-factor/enable', {
+      password,
+      method: 'totp',
+    });
+    expect(enabled.status).toBe(200);
+    const { totpURI, backupCodes } = (await enabled.json()) as {
+      totpURI: string;
+      backupCodes: string[];
+    };
+    expect(backupCodes).toHaveLength(10);
+    // A partial multi-step library update must never grant administrative access.
+    await createDb(env.DB).update(user).set({ twoFactorEnabled: true });
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      mfaRequired: true,
+    });
+    expect((await request('/api/clubs/any')).status).toBe(403);
+    await createDb(env.DB).update(user).set({ twoFactorEnabled: false });
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      mfaRequired: false,
+    });
+    await request('/api/auth/sign-out', {});
+    await login('admin');
+    const recovered = await request('/api/auth/two-factor/verify-backup-code', {
+      code: backupCodes[0],
+    });
+    expect(recovered.status).toBe(200);
+    saveCookies(recovered);
+    expect((await request('/api/me')).status).toBe(200);
+    await request('/api/auth/sign-out', {});
+    await login('admin');
+    expect(
+      (
+        await request('/api/auth/two-factor/verify-backup-code', {
+          code: backupCodes[0],
+        })
+      ).ok,
+    ).toBe(false);
+    expect((await request('/api/me')).status).toBe(401);
+  });
   it('rejects weak secrets and insecure nonlocal origins', () => {
     expect(() => createAuth({ ...env, AUTH_SECRET: 'short' })).toThrow();
     expect(() =>

@@ -1,5 +1,21 @@
 # Verificación de la primera iteración
 
+## Actualización del 24 de octubre de 2026: alta inicial y MFA visual
+
+- 19 tests Vitest de contrato/API: incluye expiración/origen/token, rate limit,
+  concurrencia, rechazo de cuentas existentes, cierre duradero y rollback de las
+  cuatro escrituras del bootstrap. También verifica MFA incompleto y no reutilización
+  de códigos de recuperación.
+- Playwright: el flujo real contra Worker/D1 temporal crea el primer administrador,
+  configura MFA, inicia sesión con TOTP y con código de recuperación. Comprueba
+  escritorio y 360 px en ese mismo flujo. Los escenarios adicionales de UI usan mocks.
+- La migración 0002 se aplicó localmente. Los secretos de trabajo no se imprimieron
+  ni versionaron; el alta real queda a cargo del usuario con sus propios datos.
+- Los problemas de formato preexistentes del repositorio se mantienen fuera del
+  alcance; se comprueba Prettier sobre los archivos modificados.
+
+El informe que sigue corresponde a la primera iteración y conserva su alcance histórico.
+
 Ejecutada localmente el 22 de octubre de 2026, en Windows.
 El shell ofrece Node 22.14.0; el pnpm del entorno de trabajo usa su runtime Node
 24.22.1. Ambos están admitidos por los engines declarados. El workflow remoto

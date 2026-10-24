@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { healthResponseSchema } from '@lisfi/shared';
+import AuthPanel from './modules/auth/AuthPanel.vue';
 
 const status = ref('Comprobando conexión…');
 const loading = ref(false);
@@ -29,7 +30,8 @@ onMounted(checkHealth);
   <main>
     <p class="eyebrow">Liga Infantil de Fútbol</p>
     <h1>LISFI Platform</h1>
-    <p>Base de desarrollo de la plataforma de gestión.</p>
+    <p>La gestión de tu liga, en un solo lugar.</p>
+    <AuthPanel />
     <section aria-labelledby="connection-title">
       <h2 id="connection-title">Estado del servicio</h2>
       <p role="status">{{ status }}</p>

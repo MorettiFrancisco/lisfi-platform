@@ -4,6 +4,7 @@ import type { HealthResponse } from '@lisfi/shared';
 import type { Bindings } from './env';
 import { createAuth } from './modules/auth/auth';
 import { protectedRoutes } from './modules/auth/routes';
+import { bootstrapRoutes } from './modules/auth/bootstrap';
 
 const app = new Hono<{ Bindings: Bindings }>();
 app.use('*', secureHeaders());
@@ -41,6 +42,7 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
   }
   return auth.handler(c.req.raw);
 });
+app.route('/api', bootstrapRoutes);
 app.route('/api', protectedRoutes);
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 app.onError((_error, c) => c.json({ error: 'Internal server error' }, 500));

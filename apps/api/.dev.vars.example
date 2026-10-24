@@ -2,4 +2,9 @@
 # Copy to .dev.vars and generate AUTH_SECRET locally; never commit it.
 AUTH_BASE_URL=http://127.0.0.1:5173
 AUTH_SECRET=
+# Optional one-time initial administrator enrollment (auth:bootstrap:local).
+# 64 lowercase hexadecimal characters, generated separately from AUTH_SECRET.
+# Expiration is an ISO-8601 UTC timestamp. Remove both after enrollment.
+BOOTSTRAP_TOKEN=
+BOOTSTRAP_EXPIRES_AT=
 # Never put secrets in VITE_* variables (they are included in the browser bundle).

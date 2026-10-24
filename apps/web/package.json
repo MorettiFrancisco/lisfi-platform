@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@lisfi/shared": "workspace:*",
+    "qrcode": "1.5.4",
     "vue": "3.5.44"
   },
   "devDependencies": {
+    "@types/qrcode": "1.5.6",
     "@vitejs/plugin-vue": "6.0.10",
     "vite": "8.3.5",
     "vue-tsc": "3.3.13"

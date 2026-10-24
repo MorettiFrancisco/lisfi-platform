@@ -15,6 +15,13 @@
       "when": 1792721198591,
       "tag": "0001_calm_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792817347238,
+      "tag": "0002_volatile_thanos",
+      "breakpoints": true
     }
   ]
 }

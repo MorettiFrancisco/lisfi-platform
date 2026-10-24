@@ -1,9 +1,15 @@
 # LISFI Platform
 
 Monorepo Vue/Hono con D1 y una primera base de autenticación y permisos en la API.
-La pantalla actual muestra el estado del servicio. Login visual, invitaciones,
+La pantalla incluye ingreso con correo/contraseña, desafío TOTP, restauración y
+cierre de sesión, clubes asignados y estado del servicio. Invitaciones,
 recuperación por correo y administración completa de clubes/delegados son las
 siguientes entregas; no hay registro público ni cuentas predeterminadas.
+
+Incluye alta controlada del primer administrador y configuración visual de MFA
+con QR local, clave manual y códigos de recuperación. El flujo completo se prueba
+en navegador contra un Worker y D1 temporales; los casos de error de UI también
+usan respuestas simuladas.
 
 ## Requisitos
 
@@ -127,10 +133,47 @@ No cargar información personal real ni documentos de menores en desarrollo.
   Rate limiting persiste en D1 y usa `CF-Connecting-IP`, proporcionado por Cloudflare.
   Debe complementarse con controles de plataforma antes de abrir producción.
 
-No existe aún un flujo de alta del primer administrador: no habilitar signup para
-resolverlo. La próxima entrega implementará bootstrap controlado e invitaciones,
-una vez definido quién administra privilegios y qué canal verificado se utilizará.
-Recuperación por correo y auditoría administrativa también están pendientes.
+El alta inicial usa un flujo separado, deshabilitado por defecto y protegido por
+una clave temporal. Signup público continúa cerrado. Invitaciones, administración
+de privilegios, recuperación por correo y auditoría administrativa general siguen
+pendientes; el alta inicial sí conserva su registro duradero.
+
+### Primer administrador y MFA local
+
+1. Ejecutar `pnpm auth:setup:local` si todavía no existe `.dev.vars` y aplicar
+   `pnpm db:migrate:local`.
+2. Ejecutar `pnpm auth:bootstrap:local`. Genera una clave aleatoria de 256 bits en
+   `apps/api/.dev.vars`, válida durante una hora, sin imprimirla. Conserva los demás
+   valores; repetirlo reemplaza la clave temporal. Reiniciar la API para cargarla.
+3. En `http://127.0.0.1:5173`, abrir **Alta del primer administrador**. Completar
+   nombre, correo y contraseña propia (12–128 caracteres), y pegar únicamente el
+   valor de `BOOTSTRAP_TOKEN` en **Clave temporal de alta**. No usar `AUTH_SECRET`.
+   La posesión de esa clave permite crear el primer administrador: compartirla solo
+   por un canal privado con el responsable de la liga.
+4. Ingresar con la cuenta creada, confirmar la contraseña y escanear el QR con un
+   autenticador. También se puede ingresar la clave manualmente. Guardar los códigos
+   de recuperación y verificar un código TOTP para activar MFA. Hasta entonces, la
+   API bloquea el acceso administrativo. Si se abandona el enrolamiento pendiente,
+   se puede iniciar de nuevo; esto reemplaza la clave y los códigos anteriores.
+5. Quitar `BOOTSTRAP_TOKEN` y `BOOTSTRAP_EXPIRES_AT` de `.dev.vars` y reiniciar la API
+   después del alta. En siguientes ingresos, se puede usar TOTP o un código de
+   recuperación de un solo uso. El frontend no persiste claves ni códigos en storage.
+
+`POST /api/bootstrap` exige el origen configurado, clave válida y fecha de
+caducidad, limita el cuerpo a 8 KiB y los intentos a 5 por minuto por IP en D1.
+La identidad, credencial Better Auth, rol y registro `initial_admin_bootstrap`
+se insertan en un único batch atómico. El registro singleton impide altas
+simultáneas y nuevos bootstraps, incluso si luego se eliminan cuentas o roles.
+Una asignación administrativa existente (también revocada) cierra el alta inicial.
+No se promueven cuentas existentes ni se marca el correo como verificado.
+No borrar el registro de bootstrap para recuperar acceso: ese proceso sigue pendiente.
+
+La migración `0002_volatile_thanos.sql` agrega ese registro sin modificar los
+esquemas generados por Better Auth. Se conserva el emisor LISFI y la verificación
+de TOTP predeterminada de la biblioteca. La API exige tanto el flag MFA como un
+autenticador verificado para autorizar administradores, también ante un fallo
+parcial del flujo de enrolamiento. Los QR se generan en el navegador, sin servicios
+externos. No hay cuentas ni contraseñas predeterminadas.
 
 Las pruebas crean cuentas `example.invalid` y secretos aleatorios únicamente en
 una base efímera. Se prueban login, logout, caducidad, suspensión, MFA de dos admins,

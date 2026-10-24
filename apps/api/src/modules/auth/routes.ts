@@ -7,6 +7,7 @@ import {
   clubMemberships,
   globalRoleAssignments,
   user,
+  twoFactor,
 } from '../../db/schema';
 import type { Bindings } from '../../env';
 import { createAuth } from './auth';
@@ -56,11 +57,20 @@ protectedRoutes.use('*', async (c, next) => {
       ),
     )
     .get();
+  const verifiedFactor = current.mfaEnabled
+    ? await db
+        .select({ id: twoFactor.id })
+        .from(twoFactor)
+        .where(
+          and(eq(twoFactor.userId, current.id), eq(twoFactor.verified, true)),
+        )
+        .get()
+    : undefined;
   c.set('identity', {
     id: current.id,
     name: current.name,
     isAdmin: !!role,
-    mfaEnabled: !!current.mfaEnabled,
+    mfaEnabled: !!verifiedFactor,
   });
   await next();
 });

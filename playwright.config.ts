@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
+import { randomBytes } from 'node:crypto';
+
+process.env.LISFI_E2E_BOOTSTRAP_TOKEN ??= randomBytes(32).toString('hex');
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -15,8 +18,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command:
-        'pnpm --filter @lisfi/api exec wrangler dev --local --ip 127.0.0.1 --port 8788',
+      command: 'node scripts/e2e-api.mjs',
       url: 'http://127.0.0.1:8788/api/health',
       timeout: 120000,
     },

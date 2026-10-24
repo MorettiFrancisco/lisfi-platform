@@ -20,6 +20,7 @@
     "test:e2e": "playwright test",
     "db:generate": "pnpm --filter @lisfi/api db:generate",
     "auth:setup:local": "node scripts/setup-local-auth.mjs",
+    "auth:bootstrap:local": "node scripts/enable-local-bootstrap.mjs",
     "db:migrate:local": "pnpm --filter @lisfi/api db:migrate:local",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },

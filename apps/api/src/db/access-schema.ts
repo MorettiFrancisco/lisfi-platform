@@ -2,11 +2,24 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   index,
+  integer,
   sqliteTable,
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { user } from './auth-schema';
+
+// Durable audit of the one-time initial grant. No cascading FK: deleting a user
+// must never reopen bootstrap or erase the original target identifier.
+export const initialAdminBootstrap = sqliteTable(
+  'initial_admin_bootstrap',
+  {
+    id: integer('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [check('initial_admin_singleton', sql`${t.id} = 1`)],
+);
 
 export const clubs = sqliteTable(
   'clubs',
