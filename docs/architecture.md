@@ -100,7 +100,7 @@ documenta el aviso y se evita sustituirlas manualmente por versiones incompatibl
 
 1. Prueba vertical de auth y roles: dos administradores, sesiones y MFA, migración
    generada por la biblioteca y permisos por membresía con revocación efectiva.
-2. Clubes/delegados e invitaciones: validación, aislamiento, paginación y auditoría.
+2. Clubes/representantes e invitaciones: validación, aislamiento, paginación y auditoría.
 3. Temporadas: transiciones controladas y contexto competitivo confirmado.
 4. Preparación del piloto: recuperación, backups/restore, cuotas y despliegue aprobado.
 

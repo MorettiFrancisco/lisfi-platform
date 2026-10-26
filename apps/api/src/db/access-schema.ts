@@ -26,14 +26,36 @@ export const clubs = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
+    shortName: text('short_name'),
     slug: text('slug').notNull().unique(),
     status: text('status', { enum: ['ACTIVE', 'INACTIVE'] })
       .notNull()
       .default('ACTIVE'),
     createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at'),
+    version: integer('version').notNull().default(1),
   },
   (t) => [
     check('club_status_check', sql`${t.status} IN ('ACTIVE', 'INACTIVE')`),
+  ],
+);
+
+export const auditLogs = sqliteTable(
+  'audit_logs',
+  {
+    id: text('id').primaryKey(),
+    actorUserId: text('actor_user_id')
+      .notNull()
+      .references(() => user.id),
+    action: text('action').notNull(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: text('resource_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    metadataJson: text('metadata_json').notNull(),
+  },
+  (t) => [
+    index('audit_resource_idx').on(t.resourceType, t.resourceId, t.createdAt),
+    index('audit_created_idx').on(t.createdAt, t.id),
   ],
 );
 
@@ -47,14 +69,14 @@ export const clubMemberships = sqliteTable(
     clubId: text('club_id')
       .notNull()
       .references(() => clubs.id),
-    role: text('role', { enum: ['CLUB_DELEGATE'] })
+    role: text('role', { enum: ['CLUB_REPRESENTATIVE'] })
       .notNull()
-      .default('CLUB_DELEGATE'),
+      .default('CLUB_REPRESENTATIVE'),
     createdAt: text('created_at').notNull(),
     revokedAt: text('revoked_at'),
   },
   (t) => [
-    check('membership_role_check', sql`${t.role} = 'CLUB_DELEGATE'`),
+    check('membership_role_check', sql`${t.role} = 'CLUB_REPRESENTATIVE'`),
     uniqueIndex('active_membership_unique')
       .on(t.userId, t.clubId, t.role)
       .where(sql`${t.revokedAt} IS NULL`),

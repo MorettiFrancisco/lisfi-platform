@@ -22,6 +22,34 @@
       "when": 1792817347238,
       "tag": "0002_volatile_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792968048138,
+      "tag": "0003_fixed_overlord",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792969825109,
+      "tag": "0004_lethal_falcon",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793053147068,
+      "tag": "0005_left_scrambler",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793056148167,
+      "tag": "0006_red_plazm",
+      "breakpoints": true
     }
   ]
 }

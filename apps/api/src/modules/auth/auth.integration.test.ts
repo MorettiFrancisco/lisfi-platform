@@ -15,6 +15,9 @@ import {
   globalRoleAssignments,
   session,
   twoFactor,
+  clubOfficials,
+  players,
+  clubPlayers,
 } from '../../db/schema';
 import type { Bindings } from '../../env';
 
@@ -30,11 +33,12 @@ async function request(
   path: string,
   body?: Record<string, unknown>,
   extraHeaders = {},
+  method?: string,
 ) {
   return app.request(
     `${origin}${path}`,
     {
-      method: body ? 'POST' : 'GET',
+      method: method ?? (body ? 'POST' : 'GET'),
       headers: {
         'content-type': 'application/json',
         origin,
@@ -117,7 +121,7 @@ beforeAll(async () => {
       modules: true,
       script: 'export default { fetch() { return new Response("ok") } }',
       compatibilityDate: '2026-10-22',
-      d1Databases: ['DB'],
+      d1Databases: ['DB', 'MIGRATION_DB'],
     }),
   );
   const DB = await mf.getD1Database('DB');
@@ -146,9 +150,16 @@ beforeEach(async () => {
   delete env.BOOTSTRAP_EXPIRES_AT;
   ipCounter++;
   for (const table of [
+    'change_approvals',
+    'change_requests',
+    'club_players',
+    'players',
+    'club_officials',
+    'audit_logs',
     'initial_admin_bootstrap',
     'club_memberships',
     'global_role_assignments',
+    'seasons',
     'clubs',
     'user',
     'rateLimit',
@@ -156,6 +167,232 @@ beforeEach(async () => {
   ]) {
     await env.DB.prepare(`DELETE FROM "${table}"`).run();
   }
+});
+
+describe('club structure and representative terminology', () => {
+  it('migrates existing delegate memberships without losing identity or revocation history', async () => {
+    const database = await mf.getD1Database('MIGRATION_DB');
+    const migrationDirectory = new URL('../../../migrations/', import.meta.url);
+    const migrationFiles = (await readdir(migrationDirectory))
+      .filter((name) => name.endsWith('.sql'))
+      .sort();
+    const applyMigration = async (file: string) => {
+      const contents = await readFile(
+        new URL(file, migrationDirectory),
+        'utf8',
+      );
+      await database.batch(
+        contents
+          .split('--> statement-breakpoint')
+          .filter((part) => part.trim())
+          .map((part) => database.prepare(part)),
+      );
+    };
+    for (const file of migrationFiles.filter((file) => file < '0004'))
+      await applyMigration(file);
+    await database.batch([
+      database.prepare(
+        `INSERT INTO "user" (id, name, email) VALUES ('legacy-user', 'Migration fixture', 'migration@example.invalid')`,
+      ),
+      database.prepare(
+        `INSERT INTO clubs (id, name, slug, created_at) VALUES ('legacy-club', 'Migration club', 'migration-club', '2026-01-01')`,
+      ),
+      database.prepare(
+        `INSERT INTO club_memberships (id, user_id, club_id, role, created_at, revoked_at) VALUES ('active-link', 'legacy-user', 'legacy-club', 'CLUB_DELEGATE', '2026-01-01', NULL), ('old-link', 'legacy-user', 'legacy-club', 'CLUB_DELEGATE', '2025-01-01', '2025-12-01')`,
+      ),
+    ]);
+    for (const file of migrationFiles.filter((file) => file >= '0004'))
+      await applyMigration(file);
+    const rows = await database
+      .prepare('SELECT * FROM club_memberships ORDER BY id')
+      .all();
+    expect(rows.results).toEqual([
+      {
+        id: 'active-link',
+        user_id: 'legacy-user',
+        club_id: 'legacy-club',
+        role: 'CLUB_REPRESENTATIVE',
+        created_at: '2026-01-01',
+        revoked_at: null,
+      },
+      {
+        id: 'old-link',
+        user_id: 'legacy-user',
+        club_id: 'legacy-club',
+        role: 'CLUB_REPRESENTATIVE',
+        created_at: '2025-01-01',
+        revoked_at: '2025-12-01',
+      },
+    ]);
+    await expect(
+      database
+        .prepare(
+          `INSERT INTO club_memberships (id, user_id, club_id, role, created_at) VALUES ('invalid-role', 'legacy-user', 'legacy-club', 'CLUB_DELEGATE', '2026-01-01')`,
+        )
+        .run(),
+    ).rejects.toThrow();
+  });
+
+  it('returns president, representatives, technical directors and players only for authorized clubs', async () => {
+    const db = createDb(env.DB);
+    const createdAt = new Date().toISOString();
+    for (const id of ['representative-one', 'representative-two', 'suspended'])
+      await seedUser(id);
+    await db
+      .update(user)
+      .set({ status: 'SUSPENDED' })
+      .where(eq(user.id, 'suspended'));
+    for (const id of ['a', 'b'])
+      await db
+        .insert(clubs)
+        .values({ id, name: `Club ${id}`, slug: `club-${id}`, createdAt });
+    for (const userId of [
+      'representative-one',
+      'representative-two',
+      'suspended',
+    ])
+      await db
+        .insert(clubMemberships)
+        .values({ id: userId, userId, clubId: 'a', createdAt });
+    await db.insert(clubOfficials).values([
+      {
+        id: 'president-a',
+        clubId: 'a',
+        name: 'Presidente A',
+        position: 'PRESIDENT',
+        createdAt,
+      },
+      {
+        id: 'old-president',
+        clubId: 'a',
+        name: 'Anterior presidente',
+        position: 'PRESIDENT',
+        createdAt,
+        endedAt: createdAt,
+      },
+      {
+        id: 'coach-one',
+        clubId: 'a',
+        name: 'DT Uno',
+        position: 'TECHNICAL_DIRECTOR',
+        createdAt,
+      },
+      {
+        id: 'coach-two',
+        clubId: 'a',
+        name: 'DT Dos',
+        position: 'TECHNICAL_DIRECTOR',
+        createdAt,
+      },
+      {
+        id: 'president-b',
+        clubId: 'b',
+        name: 'Presidente B',
+        position: 'PRESIDENT',
+        createdAt,
+      },
+    ]);
+    await db.insert(players).values([
+      { id: 'player-a', firstName: 'Jugador', lastName: 'A', createdAt },
+      { id: 'player-b', firstName: 'Jugador', lastName: 'B', createdAt },
+    ]);
+    await db.insert(clubPlayers).values([
+      { id: 'player-link-a', clubId: 'a', playerId: 'player-a', createdAt },
+      { id: 'player-link-b', clubId: 'b', playerId: 'player-b', createdAt },
+      {
+        id: 'old-player-link',
+        clubId: 'a',
+        playerId: 'player-b',
+        createdAt,
+        endedAt: createdAt,
+      },
+    ]);
+    await login('representative-one');
+    const response = await request('/api/clubs/a');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      president: { id: 'president-a', name: 'Presidente A' },
+      representatives: [
+        { id: 'representative-one' },
+        { id: 'representative-two' },
+      ],
+      technicalDirectors: [{ id: 'coach-two' }, { id: 'coach-one' }],
+      players: [{ id: 'player-a', name: 'Jugador A' }],
+    });
+    expect((await request('/api/clubs/b')).status).toBe(404);
+    await db
+      .update(clubMemberships)
+      .set({ revokedAt: createdAt })
+      .where(eq(clubMemberships.id, 'representative-two'));
+    expect(await (await request('/api/clubs/a')).json()).toMatchObject({
+      representatives: [{ id: 'representative-one' }],
+    });
+    await db
+      .update(clubMemberships)
+      .set({ revokedAt: createdAt })
+      .where(eq(clubMemberships.id, 'representative-one'));
+    expect((await request('/api/clubs/a')).status).toBe(404);
+  });
+
+  it('permits one current president, multiple directors and historical player links', async () => {
+    const db = createDb(env.DB);
+    const createdAt = new Date().toISOString();
+    await db
+      .insert(clubs)
+      .values({ id: 'a', name: 'Club A', slug: 'club-a', createdAt });
+    await db.insert(clubOfficials).values({
+      id: 'first',
+      clubId: 'a',
+      name: 'Presidente',
+      position: 'PRESIDENT',
+      createdAt,
+    });
+    await expect(
+      db.insert(clubOfficials).values({
+        id: 'second',
+        clubId: 'a',
+        name: 'Otro',
+        position: 'PRESIDENT',
+        createdAt,
+      }),
+    ).rejects.toThrow();
+    await db
+      .update(clubOfficials)
+      .set({ endedAt: createdAt })
+      .where(eq(clubOfficials.id, 'first'));
+    await db.insert(clubOfficials).values({
+      id: 'second',
+      clubId: 'a',
+      name: 'Otro',
+      position: 'PRESIDENT',
+      createdAt,
+    });
+    await db.insert(players).values({
+      id: 'player',
+      firstName: 'Jugador',
+      lastName: 'Prueba',
+      createdAt,
+    });
+    await db
+      .insert(clubPlayers)
+      .values({ id: 'link', clubId: 'a', playerId: 'player', createdAt });
+    await expect(
+      db.insert(clubPlayers).values({
+        id: 'duplicate',
+        clubId: 'a',
+        playerId: 'player',
+        createdAt,
+      }),
+    ).rejects.toThrow();
+    await db
+      .update(clubPlayers)
+      .set({ endedAt: createdAt })
+      .where(eq(clubPlayers.id, 'link'));
+    await db
+      .insert(clubPlayers)
+      .values({ id: 'next-link', clubId: 'a', playerId: 'player', createdAt });
+    expect(await db.select().from(players)).toHaveLength(1);
+  });
 });
 
 describe('controlled first-administrator enrollment', () => {
@@ -379,6 +616,426 @@ afterAll(async () => {
   await mf?.dispose();
 });
 
+describe('club management and atomic audit', () => {
+  async function administrator() {
+    await seedUser('club-admin', true);
+    await login('club-admin');
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+  }
+  const details = {
+    name: 'Estrella del Sur',
+    shortName: 'Estrella',
+    slug: 'estrella-sur',
+  };
+  async function createClub() {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await createDb(env.DB)
+      .insert(clubs)
+      .values({ id, ...details, createdAt: now });
+    await env.DB.prepare(
+      "INSERT INTO audit_logs (id, actor_user_id, action, resource_type, resource_id, created_at, metadata_json) VALUES (?, 'club-admin', 'CLUB_CREATED', 'CLUB', ?, ?, '{}')",
+    )
+      .bind(crypto.randomUUID(), id, now)
+      .run();
+    return { id, version: 1 };
+  }
+  it('requires two distinct active league administrators for club and all person assignments', async () => {
+    await administrator();
+    const firstCookie = cookie;
+    await seedUser('second-admin', true);
+    await login('second-admin');
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+    const secondCookie = cookie;
+    await seedUser('representative');
+
+    async function submit(body: Record<string, unknown>) {
+      const response = await request('/api/changes', body);
+      expect(response.status, await response.clone().text()).toBe(201);
+      return ((await response.json()) as { id: string }).id;
+    }
+    async function approveTwice(id: string) {
+      cookie = firstCookie;
+      expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(
+        200,
+      );
+      expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(
+        409,
+      );
+      cookie = secondCookie;
+      const response = await request(`/api/changes/${id}/approve`, {});
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(await response.json()).toMatchObject({ status: 'APPLIED' });
+    }
+    cookie = firstCookie;
+    const clubRequest = await submit({ kind: 'CLUB', details });
+    expect(await createDb(env.DB).select().from(clubs)).toHaveLength(0);
+    await approveTwice(clubRequest);
+    const club = (await createDb(env.DB).select().from(clubs))[0]!;
+    expect(club.name).toBe(details.name);
+    for (const body of [
+      { kind: 'PRESIDENT', clubId: club.id, name: 'President One' },
+      {
+        kind: 'REPRESENTATIVE',
+        clubId: club.id,
+        email: 'representative@example.invalid',
+      },
+      { kind: 'TECHNICAL_DIRECTOR', clubId: club.id, name: 'Coach One' },
+      { kind: 'PLAYER', clubId: club.id, firstName: 'Player', lastName: 'One' },
+    ]) {
+      cookie = firstCookie;
+      const id = await submit(body);
+      await approveTwice(id);
+    }
+    const detail = await (await request(`/api/clubs/${club.id}`)).json();
+    expect(detail).toMatchObject({
+      president: { name: 'President One' },
+      representatives: [{ name: 'Fixture representative' }],
+      technicalDirectors: [{ name: 'Coach One' }],
+      players: [{ name: 'Player One' }],
+    });
+    await login('representative');
+    expect(
+      (await request(`/api/changes/${clubRequest}/approve`, {})).status,
+    ).toBe(403);
+    expect(
+      (await request(`/api/changes/${clubRequest}/reject`, {})).status,
+    ).toBe(403);
+    expect(
+      (
+        await request('/api/changes', {
+          kind: 'PRESIDENT',
+          clubId: 'not-my-club',
+          name: 'Attack',
+        })
+      ).status,
+    ).toBe(404);
+    const replacement = await submit({
+      kind: 'PRESIDENT',
+      clubId: club.id,
+      name: 'President Two',
+    });
+    const stale = await submit({
+      kind: 'PRESIDENT',
+      clubId: club.id,
+      name: 'Stale President',
+    });
+    expect(await (await request(`/api/clubs/${club.id}`)).json()).toMatchObject(
+      { president: { name: 'President One' } },
+    );
+    await approveTwice(replacement);
+    expect(await (await request(`/api/clubs/${club.id}`)).json()).toMatchObject(
+      { president: { name: 'President Two' } },
+    );
+    cookie = firstCookie;
+    expect((await request(`/api/changes/${stale}/approve`, {})).status).toBe(
+      200,
+    );
+    cookie = secondCookie;
+    expect((await request(`/api/changes/${stale}/approve`, {})).status).toBe(
+      409,
+    );
+    expect(
+      await env.DB.prepare(
+        'SELECT count(*) AS n FROM change_approvals WHERE request_id=?',
+      )
+        .bind(stale)
+        .first('n'),
+    ).toBe(1);
+    expect((await request(`/api/changes/${stale}/reject`, {})).status).toBe(
+      200,
+    );
+    expect((await request(`/api/changes/${stale}/approve`, {})).status).toBe(
+      409,
+    );
+  });
+  it('guards all club routes and hides memberships in me until admin MFA is verified', async () => {
+    expect((await request('/api/clubs')).status).toBe(401);
+    await seedUser('club-admin', true);
+    await createDb(env.DB).insert(clubs).values({
+      id: 'private',
+      name: 'Private club',
+      slug: 'private',
+      createdAt: new Date().toISOString(),
+    });
+    await createDb(env.DB).insert(clubMemberships).values({
+      id: 'private-membership',
+      userId: 'club-admin',
+      clubId: 'private',
+      createdAt: new Date().toISOString(),
+    });
+    await login('club-admin');
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      mfaRequired: true,
+      clubs: [],
+    });
+    expect((await request('/api/clubs')).status).toBe(403);
+    expect((await request('/api/clubs/private')).status).toBe(403);
+    expect((await request('/api/clubs', details)).status).toBe(403);
+    expect(
+      (
+        await request(
+          '/api/clubs/private',
+          { name: 'Changed', version: 1 },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(403);
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    expect(enabled.status).toBe(200);
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      mfaRequired: false,
+      clubs: [{ id: 'private', name: 'Private club' }],
+    });
+    expect((await request('/api/clubs/private')).status).toBe(200);
+  });
+  it('requires a request for club creation and checks the origin', async () => {
+    await administrator();
+    expect((await request('/api/clubs', details)).status).toBe(403);
+    env.AUTH_BASE_URL = origin + '/';
+    try {
+      expect(
+        (await request('/api/changes', { kind: 'CLUB', details })).status,
+      ).toBe(201);
+      expect(await createDb(env.DB).select().from(clubs)).toHaveLength(0);
+      expect(
+        (
+          await request(
+            '/api/changes',
+            { kind: 'CLUB', details },
+            { origin: 'https://untrusted.invalid' },
+          )
+        ).status,
+      ).toBe(403);
+    } finally {
+      env.AUTH_BASE_URL = origin + '/';
+    }
+  });
+  it('normalizes the origin for updates without allowing cross-origin or originless writes', async () => {
+    await administrator();
+    const club = await createClub();
+    env.AUTH_BASE_URL = `${origin}/`;
+    try {
+      for (const untrustedOrigin of ['', 'https://untrusted.invalid']) {
+        expect(
+          (
+            await request(
+              `/api/clubs/${club.id}`,
+              { name: 'Forbidden change', version: 1 },
+              { origin: untrustedOrigin },
+              'PATCH',
+            )
+          ).status,
+        ).toBe(403);
+      }
+      expect(
+        await (await request(`/api/clubs/${club.id}`)).json(),
+      ).toMatchObject({ name: details.name, version: 1 });
+      expect(
+        await env.DB.prepare('SELECT count(*) FROM audit_logs').first(
+          'count(*)',
+        ),
+      ).toBe(1);
+      const updated = await request(
+        `/api/clubs/${club.id}`,
+        { name: 'Allowed change', version: 1 },
+        {},
+        'PATCH',
+      );
+      expect(updated.status).toBe(200);
+      expect(await updated.json()).toMatchObject({
+        name: 'Allowed change',
+        version: 2,
+      });
+      expect(
+        await env.DB.prepare('SELECT count(*) FROM audit_logs').first(
+          'count(*)',
+        ),
+      ).toBe(2);
+    } finally {
+      env.AUTH_BASE_URL = origin;
+    }
+  });
+  it('updates and changes status with atomic audit and rejects stale concurrent writes', async () => {
+    await administrator();
+    const club = await createClub();
+    const responses = await Promise.all([
+      request(
+        `/api/clubs/${club.id}`,
+        { name: 'First change', version: 1 },
+        {},
+        'PATCH',
+      ),
+      request(
+        `/api/clubs/${club.id}`,
+        { name: 'Second change', version: 1 },
+        {},
+        'PATCH',
+      ),
+    ]);
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(
+      await env.DB.prepare('SELECT count(*) FROM audit_logs').first('count(*)'),
+    ).toBe(2);
+    expect(
+      (
+        await request(
+          `/api/clubs/${club.id}`,
+          { status: 'INACTIVE', version: 2 },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(200);
+    expect(await (await request(`/api/clubs/${club.id}`)).json()).toMatchObject(
+      { status: 'INACTIVE', version: 3 },
+    );
+    expect(await (await request('/api/clubs')).json()).toMatchObject({
+      total: 0,
+    });
+    expect(
+      await (await request('/api/clubs?status=INACTIVE')).json(),
+    ).toMatchObject({ total: 1 });
+    expect(
+      (
+        await request(
+          `/api/clubs/${club.id}`,
+          { status: 'ACTIVE', version: 3 },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(200);
+    const audit = await env.DB.prepare(
+      'SELECT action FROM audit_logs ORDER BY rowid',
+    ).all();
+    expect(audit.results.map((r) => r.action)).toEqual([
+      'CLUB_CREATED',
+      'CLUB_UPDATED',
+      'CLUB_DEACTIVATED',
+      'CLUB_REACTIVATED',
+    ]);
+  });
+  it('filters representative lists, totals, search and detail by live memberships and club status', async () => {
+    await seedUser('representative');
+    const db = createDb(env.DB);
+    for (const id of ['a', 'b', 'c'])
+      await db.insert(clubs).values({
+        id,
+        name: `Club ${id}`,
+        slug: `club-${id}`,
+        createdAt: new Date().toISOString(),
+      });
+    for (const id of ['a', 'b'])
+      await db.insert(clubMemberships).values({
+        id,
+        userId: 'representative',
+        clubId: id,
+        createdAt: new Date().toISOString(),
+      });
+    await login('representative');
+    expect(
+      await (await request('/api/clubs?pageSize=1&sort=name_desc')).json(),
+    ).toMatchObject({ total: 2, items: [{ id: 'b' }] });
+    expect(
+      await (
+        await request('/api/clubs?pageSize=1&page=2&sort=name_desc')
+      ).json(),
+    ).toMatchObject({ total: 2, items: [{ id: 'a' }] });
+    expect(
+      await (await request('/api/clubs?q=Club%20c&status=ALL')).json(),
+    ).toMatchObject({ total: 0, items: [] });
+    expect(await (await request('/api/clubs?q=%25')).json()).toMatchObject({
+      total: 0,
+    });
+    expect((await request('/api/clubs/c')).status).toBe(404);
+    expect((await request('/api/clubs', details)).status).toBe(403);
+    expect(
+      (
+        await request(
+          '/api/clubs/a',
+          { name: 'Attack', version: 1 },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(403);
+    expect((await request('/api/clubs?pageSize=1000')).status).toBe(400);
+    expect((await request('/api/clubs?sort=malicious')).status).toBe(400);
+    await db
+      .update(clubMemberships)
+      .set({ revokedAt: new Date().toISOString() })
+      .where(eq(clubMemberships.id, 'a'));
+    await db.update(clubs).set({ status: 'INACTIVE' }).where(eq(clubs.id, 'b'));
+    expect(await (await request('/api/clubs?status=ALL')).json()).toMatchObject(
+      { total: 0, items: [] },
+    );
+    expect((await request('/api/clubs/a')).status).toBe(404);
+    expect((await request('/api/clubs/b')).status).toBe(404);
+  });
+  it('rolls back club writes when audit fails and rolls back audit on slug conflicts', async () => {
+    await administrator();
+    await env.DB.prepare(
+      `CREATE TRIGGER fail_club_audit BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
+    ).run();
+    try {
+      expect(
+        (await request('/api/changes', { kind: 'CLUB', details })).status,
+      ).toBe(500);
+      expect(await createDb(env.DB).select().from(clubs)).toHaveLength(0);
+    } finally {
+      await env.DB.prepare('DROP TRIGGER fail_club_audit').run();
+    }
+    const club = await createClub();
+    await createDb(env.DB).insert(clubs).values({
+      id: 'other',
+      name: 'Other',
+      slug: 'other-club',
+      createdAt: new Date().toISOString(),
+    });
+    await env.DB.prepare(
+      "INSERT INTO audit_logs (id, actor_user_id, action, resource_type, resource_id, created_at, metadata_json) VALUES ('other-audit', 'club-admin', 'CLUB_CREATED', 'CLUB', 'other', ?, '{}')",
+    )
+      .bind(new Date().toISOString())
+      .run();
+    expect(
+      (
+        await request(
+          `/api/clubs/${club.id}`,
+          { slug: 'other-club', version: 1 },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      await env.DB.prepare('SELECT count(*) FROM audit_logs').first('count(*)'),
+    ).toBe(2);
+    expect(await (await request(`/api/clubs/${club.id}`)).json()).toMatchObject(
+      { version: 1, slug: details.slug },
+    );
+  });
+});
+
 describe('authentication and live club permissions on D1', () => {
   it('requires actual authenticator verification and consumes recovery codes once', async () => {
     await seedUser('admin', true);
@@ -440,7 +1097,7 @@ describe('authentication and live club permissions on D1', () => {
   });
 
   it('enforces membership uniqueness and rolls back a failing D1 batch', async () => {
-    await seedUser('delegate');
+    await seedUser('representative');
     const db = createDb(env.DB);
     await db.insert(clubs).values({
       id: 'a',
@@ -450,14 +1107,14 @@ describe('authentication and live club permissions on D1', () => {
     });
     await db.insert(clubMemberships).values({
       id: 'first',
-      userId: 'delegate',
+      userId: 'representative',
       clubId: 'a',
       createdAt: new Date().toISOString(),
     });
     await expect(
       db.insert(clubMemberships).values({
         id: 'duplicate',
-        userId: 'delegate',
+        userId: 'representative',
         clubId: 'a',
         createdAt: new Date().toISOString(),
       }),
@@ -501,7 +1158,7 @@ describe('authentication and live club permissions on D1', () => {
   });
 
   it('allows multiple memberships, hides other clubs and observes revocation in the same session', async () => {
-    await seedUser('delegate');
+    await seedUser('representative');
     const db = createDb(env.DB);
     for (const id of ['a', 'b', 'c'])
       await db.insert(clubs).values({
@@ -513,11 +1170,11 @@ describe('authentication and live club permissions on D1', () => {
     for (const clubId of ['a', 'b'])
       await db.insert(clubMemberships).values({
         id: clubId,
-        userId: 'delegate',
+        userId: 'representative',
         clubId,
         createdAt: new Date().toISOString(),
       });
-    const signedIn = await login('delegate');
+    const signedIn = await login('representative');
     expect(signedIn.headers.get('set-cookie')).toContain('HttpOnly');
     expect(signedIn.headers.get('set-cookie')).toContain('SameSite=Lax');
     const me = await request('/api/me');
@@ -539,23 +1196,23 @@ describe('authentication and live club permissions on D1', () => {
   });
 
   it('invalidates access on logout, expiry and suspension', async () => {
-    await seedUser('delegate');
-    await login('delegate');
+    await seedUser('representative');
+    await login('representative');
     const oldCookie = cookie;
     expect((await request('/api/auth/sign-out', {})).status).toBe(200);
     cookie = oldCookie;
     expect((await request('/api/me')).status).toBe(401);
-    await login('delegate');
+    await login('representative');
     await createDb(env.DB)
       .update(session)
       .set({ expiresAt: new Date(0) });
     expect((await request('/api/me')).status).toBe(401);
-    await login('delegate');
+    await login('representative');
     await createDb(env.DB).update(user).set({ status: 'SUSPENDED' });
     expect((await request('/api/me')).status).toBe(401);
     cookie = '';
     const denied = await request('/api/auth/sign-in/email', {
-      email: 'delegate@example.invalid',
+      email: 'representative@example.invalid',
       password,
     });
     expect(denied.ok).toBe(false);
@@ -621,5 +1278,232 @@ describe('authentication and live club permissions on D1', () => {
       );
       if (attempt === 5) expect(response.status).toBe(429);
     }
+  });
+});
+
+describe('season management', () => {
+  it('allows MFA admins to create, activate and close seasons atomically while preserving history', async () => {
+    expect((await request('/api/seasons')).status).toBe(401);
+    await seedUser('season-admin', true);
+    await login('season-admin');
+    const payload = {
+      name: 'Temporada 2027',
+      year: 2027,
+      startDate: '2027-03-01',
+      endDate: '2027-12-01',
+    };
+    expect((await request('/api/seasons', payload)).status).toBe(403);
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+    expect(
+      (await request('/api/seasons', { ...payload, startDate: '2027-02-30' }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await request('/api/seasons', { ...payload, endDate: '2026-01-01' }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await request('/api/seasons', payload, {
+          origin: 'https://other.invalid',
+        })
+      ).status,
+    ).toBe(403);
+    const created = await request('/api/seasons', payload);
+    expect(created.status).toBe(201);
+    const season = (await created.json()) as { id: string; status: string };
+    expect(season.status).toBe('DRAFT');
+    expect(
+      (
+        await request(
+          `/api/seasons/${season.id}/status`,
+          { from: 'DRAFT', to: 'CLOSED' },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(400);
+    const competing = await Promise.all([
+      request(
+        `/api/seasons/${season.id}/status`,
+        { from: 'DRAFT', to: 'ACTIVE' },
+        {},
+        'PATCH',
+      ),
+      request(
+        `/api/seasons/${season.id}/status`,
+        { from: 'DRAFT', to: 'ACTIVE' },
+        {},
+        'PATCH',
+      ),
+    ]);
+    expect(competing.map((r) => r.status).sort()).toEqual([200, 409]);
+    const parallel = await request('/api/seasons', {
+      ...payload,
+      name: 'Otra temporada',
+    });
+    expect(parallel.status).toBe(201);
+    const other = (await parallel.json()) as { id: string };
+    expect(
+      (
+        await request(
+          `/api/seasons/${other.id}/status`,
+          { from: 'DRAFT', to: 'ACTIVE' },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      await (await request('/api/seasons?status=ACTIVE')).json(),
+    ).toMatchObject({ total: 2 });
+    expect(
+      (
+        await request(
+          `/api/seasons/${season.id}/status`,
+          { from: 'ACTIVE', to: 'CLOSED' },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          `/api/seasons/${season.id}/status`,
+          { from: 'ACTIVE', to: 'CLOSED' },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      await (await request('/api/seasons?status=CLOSED')).json(),
+    ).toMatchObject({ total: 1, items: [{ id: season.id, status: 'CLOSED' }] });
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT action FROM audit_logs WHERE resource_type='SEASON' AND resource_id=? ORDER BY rowid",
+        )
+          .bind(season.id)
+          .all()
+      ).results.map((r) => r.action),
+    ).toEqual(['SEASON_CREATED', 'SEASON_ACTIVATED', 'SEASON_CLOSED']);
+    await seedUser('season-representative');
+    await login('season-representative');
+    expect((await request('/api/seasons')).status).toBe(200);
+    expect((await request('/api/seasons', payload)).status).toBe(403);
+    expect(
+      (
+        await request(
+          `/api/seasons/${season.id}/status`,
+          { from: 'ACTIVE', to: 'CLOSED' },
+          {},
+          'PATCH',
+        )
+      ).status,
+    ).toBe(403);
+  });
+  it('rolls back season creation if auditing fails', async () => {
+    await seedUser('season-admin', true);
+    await login('season-admin');
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    saveCookies(verified);
+    await env.DB.prepare(
+      "CREATE TRIGGER fail_season_audit BEFORE INSERT ON audit_logs WHEN NEW.action='SEASON_CREATED' BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+    ).run();
+    try {
+      expect(
+        (
+          await request('/api/seasons', {
+            name: 'Temp',
+            year: 2027,
+            startDate: '2027-01-01',
+            endDate: '2027-12-31',
+          })
+        ).status,
+      ).toBe(500);
+      expect(
+        await env.DB.prepare('SELECT count(*) AS n FROM seasons').first('n'),
+      ).toBe(0);
+    } finally {
+      await env.DB.prepare('DROP TRIGGER fail_season_audit').run();
+    }
+  });
+});
+
+describe('audit trail', () => {
+  it('requires a league administrator with MFA and exposes only the filtered summary', async () => {
+    expect((await request('/api/audit-logs')).status).toBe(401);
+    await seedUser('audit-admin', true);
+    await login('audit-admin');
+    expect((await request('/api/audit-logs')).status).toBe(403);
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    saveCookies(verified);
+    const adminCookie = cookie;
+    const db = createDb(env.DB);
+    await db.insert(clubs).values({
+      id: 'audit-club',
+      name: 'Club auditado',
+      slug: 'audit-club',
+      createdAt: '2027-01-01T00:00:00.000Z',
+    });
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, actor_user_id, action, resource_type, resource_id, created_at, metadata_json) VALUES
+      ('log-one', 'audit-admin', 'CLUB_UPDATED', 'CLUB', 'audit-club', '2027-01-01T23:59:59.000Z', '{"before":{"name":"Original","secret":"DO_NOT_RETURN"},"after":{"name":"Nuevo","secret":"ALSO_PRIVATE"}}'),
+      ('log-two', 'audit-admin', 'SEASON_CREATED', 'SEASON', 'missing', '2027-01-02T00:00:00.000Z', '{"name":"PRIVATE"}')`,
+    ).run();
+    const filtered = await request(
+      '/api/audit-logs?resourceType=CLUB&from=2027-01-01&to=2027-01-01&pageSize=1',
+    );
+    expect(filtered.status).toBe(200);
+    const body = await filtered.json();
+    expect(body).toMatchObject({
+      total: 1,
+      items: [
+        {
+          id: 'log-one',
+          actorName: 'Fixture audit-admin',
+          resourceName: 'Club auditado',
+          action: 'CLUB_UPDATED',
+          changes: [{ field: 'name', before: 'Original', after: 'Nuevo' }],
+        },
+      ],
+    });
+    expect(JSON.stringify(body)).not.toContain('DO_NOT_RETURN');
+    expect(JSON.stringify(body)).not.toContain('metadata');
+    expect(
+      await (await request('/api/audit-logs?page=2&pageSize=1')).json(),
+    ).toMatchObject({ total: 2, items: [{ id: 'log-one' }] });
+    expect((await request('/api/audit-logs?resourceType=invalid')).status).toBe(
+      400,
+    );
+    expect((await request('/api/audit-logs?from=2027-02-30')).status).toBe(400);
+    expect(
+      (await request('/api/audit-logs?from=2027-01-02&to=2027-01-01')).status,
+    ).toBe(400);
+    await seedUser('audit-representative');
+    await login('audit-representative');
+    expect((await request('/api/audit-logs')).status).toBe(403);
+    cookie = adminCookie;
+    await db
+      .update(globalRoleAssignments)
+      .set({ revokedAt: new Date().toISOString() })
+      .where(eq(globalRoleAssignments.id, 'role-audit-admin'));
+    expect((await request('/api/audit-logs')).status).toBe(403);
   });
 });

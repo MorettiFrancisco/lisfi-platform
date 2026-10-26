@@ -3,6 +3,9 @@ import { onMounted, ref } from 'vue';
 import { meResponseSchema, type MeResponse } from '@lisfi/shared';
 import BootstrapPanel from './BootstrapPanel.vue';
 import MfaSetup from './MfaSetup.vue';
+import ClubsPanel from '../clubs/ClubsPanel.vue';
+import SeasonsPanel from '../seasons/SeasonsPanel.vue';
+import AuditPanel from '../audit/AuditPanel.vue';
 
 const identity = ref<MeResponse | null>(null);
 const stage = ref<
@@ -16,6 +19,8 @@ const error = ref('');
 const notice = ref('');
 const recovery = ref(false);
 const mfaBusy = ref(false);
+const clubsBusy = ref(false);
+const seasonsBusy = ref(false);
 
 function administratorCreated(accountEmail: string) {
   email.value = accountEmail;
@@ -270,13 +275,6 @@ onMounted(restore);
         Tu cuenta requiere configurar la autenticación de dos pasos antes de
         acceder a funciones administrativas.
       </p>
-      <template v-else>
-        <h3>Tus clubes</h3>
-        <ul v-if="identity.clubs.length">
-          <li v-for="club in identity.clubs" :key="club.id">{{ club.name }}</li>
-        </ul>
-        <p v-else>No tenés clubes asignados.</p>
-      </template>
       <MfaSetup
         v-if="identity.mfaRequired"
         @complete="restore"
@@ -286,9 +284,33 @@ onMounted(restore);
       <p v-else-if="identity.roles.includes('LEAGUE_ADMIN')">
         Autenticación de dos pasos activada.
       </p>
-      <button :disabled="busy || mfaBusy" @click="submit">
+      <button
+        :disabled="busy || mfaBusy || clubsBusy || seasonsBusy"
+        @click="submit"
+      >
         {{ busy ? 'Cerrando…' : 'Cerrar sesión' }}
       </button>
+      <ClubsPanel
+        v-if="!identity.mfaRequired"
+        :key="identity.user.id"
+        :is-league-admin="identity.roles.includes('LEAGUE_ADMIN')"
+        @expired="sessionExpired"
+        @recheck="restore"
+        @busy="clubsBusy = $event"
+      />
+      <SeasonsPanel
+        v-if="!identity.mfaRequired"
+        :key="identity.user.id"
+        :is-league-admin="identity.roles.includes('LEAGUE_ADMIN')"
+        @expired="sessionExpired"
+        @recheck="restore"
+        @busy="seasonsBusy = $event"
+      />
+      <AuditPanel
+        v-if="!identity.mfaRequired && identity.roles.includes('LEAGUE_ADMIN')"
+        @expired="sessionExpired"
+        @recheck="restore"
+      />
     </div>
     <button v-if="stage === 'unavailable'" :disabled="busy" @click="restore">
       Reintentar acceso

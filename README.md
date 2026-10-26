@@ -3,7 +3,7 @@
 Monorepo Vue/Hono con D1 y una primera base de autenticación y permisos en la API.
 La pantalla incluye ingreso con correo/contraseña, desafío TOTP, restauración y
 cierre de sesión, clubes asignados y estado del servicio. Invitaciones,
-recuperación por correo y administración completa de clubes/delegados son las
+recuperación por correo y administración de representantes son las
 siguientes entregas; no hay registro público ni cuentas predeterminadas.
 
 Incluye alta controlada del primer administrador y configuración visual de MFA
@@ -85,7 +85,9 @@ Wrangler emula D1 con persistencia en `apps/api/.wrangler/`, ignorada por Git.
 La primera migración crea `seasons`; la segunda agrega el esquema oficial de
 Better Auth (incluye MFA y rate limiting) y las tablas mínimas de clubes, membresías
 y roles globales. No hay datos precargados. Auth usa timestamps en milisegundos,
-generados por su CLI/Drizzle; el dominio usa ISO-8601. No hay API de temporadas.
+generados por su CLI/Drizzle; el dominio usa ISO-8601. La API de temporadas permite
+crear borradores y activar o cerrar temporadas con auditoría; no impone una única
+temporada activa mientras no esté definido el contexto competitivo.
 
 Para modificar el esquema: editar `apps/api/src/db/schema.ts`, ejecutar
 `pnpm db:generate`, revisar el SQL generado y ejecutar `pnpm db:migrate:local`.
@@ -121,10 +123,10 @@ No cargar información personal real ni documentos de menores en desarrollo.
 - `GET/POST /api/auth/*` expone la API de la biblioteca, con alta pública cerrada.
   Todo POST requiere `Origin` idéntico a `AUTH_BASE_URL`, incluso el login.
 - `GET /api/me` devuelve identidad, rol global, necesidad de MFA y clubes propios.
-- `GET /api/clubs/:id` es una lectura mínima para comprobar permisos. Un delegado
-  ajeno recibe 404; sin sesión recibe 401. No es todavía un CRUD de clubes.
-- Administradores requieren MFA verificado para leer clubes. Los delegados usan
-  membresías vigentes; puede haber varios delegados por club y varios clubes por usuario.
+- `GET /api/clubs/:id` devuelve el detalle autorizado de un club. Un representante
+  ajeno recibe 404; sin sesión recibe 401. El módulo de clubes se describe abajo.
+- Administradores requieren MFA verificado para leer clubes. Los representantes usan
+  membresías vigentes; puede haber varios representantes por club y varios clubes por usuario.
 - Las sesiones duran 8 horas, sin caché de cookies de sesión. Cada consulta vuelve
   a verificar estado del usuario, roles y membresías. Cerrar sesión o revocar acceso
   surte efecto en la próxima petición. Cambios de usuario a través de Better Auth
@@ -137,6 +139,32 @@ El alta inicial usa un flujo separado, deshabilitado por defecto y protegido por
 una clave temporal. Signup público continúa cerrado. Invitaciones, administración
 de privilegios, recuperación por correo y auditoría administrativa general siguen
 pendientes; el alta inicial sí conserva su registro duradero.
+
+### Gestión de clubes
+
+Después de ingresar y completar MFA, el administrador accede al listado de clubes:
+alta, detalle, edición, desactivación y reactivación. Los representantes solo consultan
+clubes activos con membresía vigente. Cambios de rol, membresía y estado se verifican
+en cada petición. `/api/me` tampoco devuelve clubes a administradores con MFA pendiente.
+
+- `GET /api/clubs`: `page` (desde 1), `pageSize` (1–50, por defecto 10), `q`
+  (hasta 100 caracteres), `status` (`ACTIVE`, `INACTIVE`, `ALL`) y `sort`
+  (`name_asc`, `name_desc`, `newest`). Los totales están filtrados por permisos;
+  pedir `ALL` nunca amplía el acceso de un representante. Búsqueda literal por nombre,
+  nombre corto o slug; SQLite aplica su comparación de texto predeterminada.
+- `POST /api/clubs`: nombre (1–120 caracteres), nombre corto opcional (hasta 40) y
+  slug único (3–80 letras ASCII minúsculas, números y guiones). Crea un club activo.
+- `PATCH /api/clubs/:id`: los campos a modificar y `version` de la última lectura.
+  Rechaza versiones obsoletas con 409 para impedir sobrescrituras concurrentes.
+  El estado puede ser `ACTIVE` o `INACTIVE`; no se eliminan registros históricos.
+
+Las mutaciones exigen administrador con MFA y el mismo origen configurado. Club y
+evento en `audit_logs` se escriben juntos en un batch D1. El evento conserva actor,
+acción, fecha y valores anteriores/nuevos del club; no contraseñas ni secretos.
+La migración `0003_fixed_overlord.sql` agrega auditoría, nombre corto, fecha de
+actualización y versión sin borrar clubes existentes. La fecha de actualización
+de un club previo se presenta como su fecha de creación hasta la primera edición.
+La consulta administrativa de auditoría y las invitaciones quedan para otra entrega.
 
 ### Primer administrador y MFA local
 
@@ -184,8 +212,9 @@ emulado; Playwright comprueba el frontend contra el Worker real de desarrollo.
 
 D1 no admite transacciones interactivas: el adaptador Drizzle las deshabilita.
 El adaptador nativo usa otra representación de fechas; se mantiene Drizzle para
-evitar esquemas incompatibles. Antes de añadir mutaciones administrativas se
-validarán lotes atómicos con auditoría y compensación de flujos de auth de varios pasos.
+evitar esquemas incompatibles. El alta inicial y las mutaciones de clubes usan
+lotes atómicos verificados con pruebas de rollback. Otros flujos de auth de varios
+pasos todavía requieren evaluar su compensación antes de implementarlos.
 No hay despliegue ni se declara esta base lista para usuarios reales.
 
 Referencias: [Better Auth/Hono](https://better-auth.com/docs/integrations/hono),

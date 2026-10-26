@@ -11,18 +11,23 @@ import {
 } from '../../db/schema';
 import type { Bindings } from '../../env';
 import { createAuth } from './auth';
+import { clubRoutes } from '../clubs/routes';
+import { changeRoutes } from '../changes/routes';
+import { seasonRoutes } from '../seasons/routes';
+import { auditRoutes } from '../audit/routes';
 
 type Auth = ReturnType<typeof createAuth>;
 type Identity = {
   id: string;
   name: string;
-  isAdmin: boolean;
+  isLeagueAdmin: boolean;
   mfaEnabled: boolean;
 };
-export const protectedRoutes = new Hono<{
+export type ProtectedEnv = {
   Bindings: Bindings;
   Variables: { identity: Identity };
-}>();
+};
+export const protectedRoutes = new Hono<ProtectedEnv>();
 
 protectedRoutes.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store');
@@ -69,7 +74,7 @@ protectedRoutes.use('*', async (c, next) => {
   c.set('identity', {
     id: current.id,
     name: current.name,
-    isAdmin: !!role,
+    isLeagueAdmin: !!role,
     mfaEnabled: !!verifiedFactor,
   });
   await next();
@@ -77,51 +82,30 @@ protectedRoutes.use('*', async (c, next) => {
 
 protectedRoutes.get('/me', async (c) => {
   const identity = c.get('identity');
-  const memberships = await createDb(c.env.DB)
-    .select({ id: clubs.id, name: clubs.name })
-    .from(clubMemberships)
-    .innerJoin(clubs, eq(clubs.id, clubMemberships.clubId))
-    .where(
-      and(
-        eq(clubMemberships.userId, identity.id),
-        isNull(clubMemberships.revokedAt),
-        eq(clubs.status, 'ACTIVE'),
-      ),
-    );
+  const memberships =
+    identity.isLeagueAdmin && !identity.mfaEnabled
+      ? []
+      : await createDb(c.env.DB)
+          .select({ id: clubs.id, name: clubs.name })
+          .from(clubMemberships)
+          .innerJoin(clubs, eq(clubs.id, clubMemberships.clubId))
+          .where(
+            and(
+              eq(clubMemberships.userId, identity.id),
+              eq(clubMemberships.role, 'CLUB_REPRESENTATIVE'),
+              isNull(clubMemberships.revokedAt),
+              eq(clubs.status, 'ACTIVE'),
+            ),
+          );
   return c.json({
     user: { id: identity.id, name: identity.name },
-    roles: identity.isAdmin ? ['LEAGUE_ADMIN'] : [],
-    mfaRequired: identity.isAdmin && !identity.mfaEnabled,
+    roles: identity.isLeagueAdmin ? ['LEAGUE_ADMIN'] : [],
+    mfaRequired: identity.isLeagueAdmin && !identity.mfaEnabled,
     clubs: memberships,
   } satisfies MeResponse);
 });
 
-// Minimal protected read to verify cross-club isolation before adding CRUD.
-protectedRoutes.get('/clubs/:id', async (c) => {
-  const identity = c.get('identity');
-  if (identity.isAdmin && !identity.mfaEnabled)
-    return c.json({ error: 'MFA required' }, 403);
-  const db = createDb(c.env.DB);
-  const selection = { id: clubs.id, name: clubs.name, slug: clubs.slug };
-  const club = identity.isAdmin
-    ? await db
-        .select(selection)
-        .from(clubs)
-        .where(and(eq(clubs.id, c.req.param('id')), eq(clubs.status, 'ACTIVE')))
-        .get()
-    : await db
-        .select(selection)
-        .from(clubs)
-        .innerJoin(clubMemberships, eq(clubMemberships.clubId, clubs.id))
-        .where(
-          and(
-            eq(clubs.id, c.req.param('id')),
-            eq(clubs.status, 'ACTIVE'),
-            eq(clubMemberships.userId, identity.id),
-            isNull(clubMemberships.revokedAt),
-          ),
-        )
-        .get();
-  if (!club) return c.json({ error: 'Not found' }, 404);
-  return c.json(club);
-});
+protectedRoutes.route('/clubs', clubRoutes);
+protectedRoutes.route('/changes', changeRoutes);
+protectedRoutes.route('/seasons', seasonRoutes);
+protectedRoutes.route('/audit-logs', auditRoutes);

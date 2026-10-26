@@ -96,6 +96,78 @@ test('real Worker: bootstrap, enroll MFA, sign in and recover access', async ({
   ).toBeVisible();
   await expect(qr).toHaveCount(0);
   await expect(page.locator('.recovery-codes')).toHaveCount(0);
+  // The first administrator may request a club, but cannot create it alone.
+  await page.getByRole('button', { name: 'Nuevo club', exact: true }).click();
+  await page.getByLabel('Nombre del club').fill('Estrella del Sur');
+  await page.getByLabel('Nombre corto (opcional)').fill('Estrella');
+  await page.getByLabel('Identificador del club').fill('estrella-sur');
+  await page
+    .getByRole('button', { name: 'Solicitar alta', exact: true })
+    .click();
+  await expect(
+    page.getByText('Solicitud de alta enviada.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText('Alta de club: Estrella del Sur')).toBeVisible();
+  await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
+  await expect(
+    page.getByText('Pendiente · 1/2 aprobaciones', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Ya aprobaste', exact: true }),
+  ).toBeDisabled();
+  await expect(page.locator('.club-list li')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole('button', { name: 'Nueva temporada' }).click();
+  await page
+    .getByLabel('Nombre de la temporada')
+    .fill('Temporada de prueba 2027');
+  await page.getByLabel('Año', { exact: true }).fill('2027');
+  await page.getByLabel('Fecha de inicio').fill('2027-03-01');
+  await page.getByLabel('Fecha de fin').fill('2027-12-01');
+  await page
+    .locator('.seasons-panel')
+    .screenshot({ path: 'tmp/previews/temporada-formulario.png' });
+  await page.getByRole('button', { name: 'Crear borrador' }).click();
+  await expect(page.getByText('Temporada creada como borrador.')).toBeVisible();
+  await page.getByRole('button', { name: 'Activar temporada' }).click();
+  await page.getByRole('button', { name: 'Confirmar activación' }).click();
+  await expect(page.getByText('Temporada activada.')).toBeVisible();
+  await page
+    .locator('.seasons-panel')
+    .screenshot({ path: 'tmp/previews/temporada-activa.png' });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page
+    .locator('.seasons-panel')
+    .screenshot({ path: 'tmp/previews/temporada-movil.png' });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole('button', { name: 'Cerrar temporada' }).click();
+  await page.getByRole('button', { name: 'Confirmar cierre' }).click();
+  await expect(
+    page.getByText('Temporada cerrada.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.locator('.season-list')).toContainText('Cerrada');
+  await page.getByRole('button', { name: 'Ver actividad' }).click();
+  await expect(page.locator('.audit-list')).toContainText('Temporada cerrada');
+  await expect(page.locator('.audit-list')).toContainText(
+    'Temporada de prueba 2027',
+  );
+  await page
+    .locator('.audit-panel')
+    .screenshot({ path: 'tmp/previews/actividad-movil.png' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page
+    .locator('.audit-panel')
+    .screenshot({ path: 'tmp/previews/actividad-desktop.png' });
+  await page.getByLabel('Tipo', { exact: true }).selectOption('SEASON');
+  await page.getByRole('button', { name: 'Buscar actividad' }).click();
+  await expect(page.locator('.audit-list > li')).toHaveCount(3);
+  await expect(page.locator('.audit-list')).not.toContainText(
+    'Solicitud aprobada',
+  );
   await page
     .getByRole('button', { name: 'Cerrar sesión', exact: true })
     .click();

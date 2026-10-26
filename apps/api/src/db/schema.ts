@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { check, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 export * from './auth-schema';
 export * from './access-schema';
+export * from './club-structure-schema';
 
 // No global uniqueness for ACTIVE until LISFI defines competitive contexts.
 export const seasons = sqliteTable(
@@ -25,3 +26,5 @@ export const seasons = sqliteTable(
     check('seasons_dates_check', sql`${table.startDate} <= ${table.endDate}`),
   ],
 );
+
+export * from './change-schema';

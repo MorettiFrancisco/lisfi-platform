@@ -1,0 +1,1 @@
+CREATE INDEX `audit_created_idx` ON `audit_logs` (`created_at`,`id`);

@@ -49,7 +49,8 @@ form {
   display: grid;
   gap: 0.8rem;
 }
-input {
+input,
+select {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -112,4 +113,221 @@ h2 {
 }
 summary {
   cursor: pointer;
+}
+.clubs-panel {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #cedbd5;
+}
+.section-heading,
+.button-row,
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.button-row {
+  justify-content: flex-start;
+}
+.club-filters {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  align-items: end;
+  margin-block: 1rem 1.5rem;
+}
+.club-filters label {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+.club-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+.club-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem;
+  border: 1px solid #cedbd5;
+  border-radius: 0.5rem;
+}
+.club-list h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.club-list p {
+  margin-block: 0.4rem;
+  overflow-wrap: anywhere;
+}
+.status-badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 1rem;
+  background: #dcefe4;
+}
+.status-badge.inactive {
+  background: #eee;
+  color: #555;
+}
+.empty-state,
+.confirmation {
+  padding: 1rem;
+  background: #f2f6f4;
+  border-radius: 0.5rem;
+}
+.club-detail dd {
+  margin: 0.3rem 0 1rem;
+  overflow-wrap: anywhere;
+}
+.club-detail dt {
+  font-weight: 600;
+}
+.success-message {
+  color: #176349;
+}
+.back-link {
+  margin-top: 1rem;
+}
+.pagination {
+  margin-block: 1rem;
+  font-size: 0.9rem;
+}
+select:focus-visible {
+  outline: 3px solid #1b8062;
+  outline-offset: 3px;
+}
+.club-structure {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.8rem;
+  margin-block: 1.5rem;
+}
+.club-structure section {
+  margin: 0;
+  padding: 1rem;
+  background: #f7faf8;
+  overflow-wrap: anywhere;
+}
+.club-structure h4 {
+  margin: 0 0 0.8rem;
+}
+.club-structure p {
+  margin: 0;
+}
+.club-structure ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+.changes-panel {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid #cbdcd2;
+  border-radius: 12px;
+  background: #f5f9f6;
+}
+.changes-panel h3 {
+  margin: 0.25rem 0;
+}
+.request-list {
+  list-style: none;
+  padding: 0;
+}
+.request-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid #cbdcd2;
+}
+.request-list p {
+  margin: 0.25rem 0;
+}
+@media (max-width: 600px) {
+  .request-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+.seasons-panel {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #cedbd5;
+}
+.season-filter {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-block: 1rem;
+}
+.season-filter select {
+  width: auto;
+  min-width: 10rem;
+}
+.season-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+.season-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem;
+  border: 1px solid #cedbd5;
+  border-radius: 0.5rem;
+}
+.season-list h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.season-list p {
+  margin-block: 0.4rem;
+}
+.audit-panel {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #cedbd5;
+}
+.audit-filters {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  align-items: end;
+  margin-block: 1rem;
+}
+.audit-filters label {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+.audit-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+.audit-list > li {
+  padding: 1rem;
+  border: 1px solid #cedbd5;
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.audit-list ul {
+  padding-left: 1.2rem;
+  margin: 0.4rem 0;
+}
+.audit-list p {
+  margin: 0.4rem 0;
+}
+.audit-list details {
+  font-size: 0.85rem;
 }

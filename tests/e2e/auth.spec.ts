@@ -1,11 +1,38 @@
 import { expect, test } from '@playwright/test';
 
 const identity = {
-  user: { id: 'delegate', name: 'Delegado de prueba' },
+  user: { id: 'representative', name: 'Representante de prueba' },
   roles: [],
   mfaRequired: false,
   clubs: [{ id: 'club', name: 'Club de prueba' }],
 };
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/seasons?*', (route) =>
+    route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }),
+  );
+  await page.route('**/api/clubs?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'club',
+            name: 'Club de prueba',
+            slug: 'club-prueba',
+            shortName: null,
+            status: 'ACTIVE',
+            version: 1,
+            createdAt: '2026-01-01',
+            updatedAt: '2026-01-01',
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+      },
+    }),
+  );
+});
 
 test('MFA setup retries password errors and removes secrets when session expires', async ({
   page,
@@ -70,7 +97,7 @@ test('login, MFA challenge, session restoration and logout', async ({
   );
   await page.route('**/api/auth/sign-in/email', async (route) => {
     expect(route.request().postDataJSON()).toEqual({
-      email: 'delegate@example.invalid',
+      email: 'representative@example.invalid',
       password: 'test-password',
       rememberMe: false,
     });
@@ -85,7 +112,9 @@ test('login, MFA challenge, session restoration and logout', async ({
     await route.fulfill({ json: { success: true } });
   });
   await page.goto('/');
-  await page.getByLabel('Correo electrónico').fill('delegate@example.invalid');
+  await page
+    .getByLabel('Correo electrónico')
+    .fill('representative@example.invalid');
   await page.getByLabel('Contraseña', { exact: true }).fill('test-password');
   await page.getByRole('button', { name: 'Ingresar', exact: true }).click();
   await page.getByLabel('Código de verificación').fill('000000');
@@ -96,7 +125,7 @@ test('login, MFA challenge, session restoration and logout', async ({
   await expect(page.getByText('Club de prueba', { exact: true })).toBeVisible();
   await page.reload();
   await expect(
-    page.getByText('Delegado de prueba', { exact: true }),
+    page.getByText('Representante de prueba', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Cerrar sesión' }).click();
   await expect(page.getByLabel('Correo electrónico')).toBeVisible();
@@ -119,7 +148,9 @@ test('unavailable session can retry and failed credentials do not expose account
   await expect(page.getByRole('alert')).toContainText('no está disponible');
   available = true;
   await page.getByRole('button', { name: 'Reintentar acceso' }).click();
-  await page.getByLabel('Correo electrónico').fill('delegate@example.invalid');
+  await page
+    .getByLabel('Correo electrónico')
+    .fill('representative@example.invalid');
   await page.getByLabel('Contraseña', { exact: true }).fill('wrong-password');
   await page.getByRole('button', { name: 'Ingresar', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText(

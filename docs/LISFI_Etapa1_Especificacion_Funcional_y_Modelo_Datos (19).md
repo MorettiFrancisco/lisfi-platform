@@ -5,14 +5,14 @@
 
 ## 1. Objetivo y decisiones confirmadas
 
-Desarrollar una **única aplicación web multi-club** para LISFI, con una sola API y base de datos. Cada club accede exclusivamente a su información permitida. La administración central gestiona clubes y delegados.
+Desarrollar una **única aplicación web multi-club** para LISFI, con una sola API y base de datos. Cada club accede exclusivamente a su información permitida. La administración central gestiona clubes y representantes.
 
 **Decisiones confirmadas**
 
 1. Puede haber **múltiples administradores LISFI** con cuentas personales.
-2. Un club puede tener **múltiples delegados**; un delegado podrá vincularse a más de un club, sujeto a autorización de LISFI.
+2. Un club puede tener **múltiples representantes**; un representante podrá vincularse a más de un club, sujeto a autorización de LISFI.
 3. Los **fichajes se renuevan por temporada**; la identidad del jugador y del responsable persiste entre temporadas.
-4. Los delegados inician fichajes; el adulto responsable realiza una autorización separada.
+4. Los representantes inician fichajes; el adulto responsable realiza una autorización separada.
 5. Para una etapa posterior está elegido el mecanismo de **revisión documental manual** (DNI y evidencia del vínculo) por LISFI; su suficiencia legal requiere validación.
 6. La documentación médica sigue bajo custodia física de la Liga; la plataforma solo registra el estado administrativo de aptitud, cuando se implemente.
 
@@ -23,7 +23,7 @@ Desarrollar una **única aplicación web multi-club** para LISFI, con una sola A
 - Repositorio y arquitectura modular (Vue 3/TypeScript; Hono/Workers; D1/Drizzle).
 - Entornos de desarrollo y producción, migraciones y despliegue automatizado.
 - Autenticación con solución probada, sesiones seguras, recuperación de acceso y protección contra abuso.
-- Roles `LEAGUE_ADMIN` y `CLUB_DELEGATE`; permisos efectivos por membresía de club.
+- Roles `LEAGUE_ADMIN` y `CLUB_REPRESENTATIVE`; permisos efectivos por membresía de club.
 - Alta, edición, desactivación y consulta paginada de clubes.
 - Alta/invitación, activación y desactivación de usuarios, con asignación/revocación de delegaciones.
 - Alta y consulta de temporadas; una temporada activa por contexto competitivo definido por LISFI.
@@ -45,12 +45,12 @@ Desarrollar una **única aplicación web multi-club** para LISFI, con una sola A
 | Actor | Alcance | Restricciones |
 |---|---|---|
 | Administrador LISFI | Administra clubes, usuarios, asignaciones y temporadas | La cuenta es individual; acciones auditadas; no se comparte contraseña |
-| Delegado | Accede a los clubes de sus membresías vigentes | No puede asignarse a clubes ni elevar permisos |
-| Adulto responsable (Etapa 2) | Autoriza fichajes de menores que representa | Sin privilegios de delegado ni administrador |
+| Representante | Accede a los clubes de sus membresías vigentes | No puede asignarse a clubes ni elevar permisos |
+| Adulto responsable (Etapa 2) | Autoriza fichajes de menores que representa | Sin privilegios de representante ni administrador |
 | Revisor documental (Etapa 2) | Valida evidencia por delegación de LISFI | Rol separado por mínimo privilegio |
 | Visitante | Web pública | No accede a DNI, contactos, documentos ni autorizaciones |
 
-Un usuario puede pertenecer a varios clubes. Se recomienda que el rol administrativo sea global y que el rol delegado se conceda por membresía; **no** un simple `role` editable en el cliente.
+Un usuario puede pertenecer a varios clubes. Se recomienda que el rol administrativo sea global y que el rol representante se conceda por membresía; **no** un simple `role` editable en el cliente.
 
 ## 4. Requisitos funcionales (Etapa 1)
 
@@ -61,8 +61,8 @@ Un usuario puede pertenecer a varios clubes. Se recomienda que el rol administra
 | RF-03 | LISFI crea y edita un club con nombre único operativo y slug único | Alta | Validaciones y conflicto 409 |
 | RF-04 | LISFI desactiva un club sin borrar su historial | Alta | Club desactivado no admite nuevas acciones |
 | RF-05 | LISFI invita usuarios y asigna uno o varios clubes | Alta | Invitación de un solo uso y con vencimiento |
-| RF-06 | LISFI revoca una membresía de delegado | Alta | Pierde acceso inmediatamente tras revocación |
-| RF-07 | Delegado ve exclusivamente sus clubes y sus datos autorizados | Alta | Acceso a club ajeno devuelve 403/404 |
+| RF-06 | LISFI revoca una membresía de representante | Alta | Pierde acceso inmediatamente tras revocación |
+| RF-07 | Representante ve exclusivamente sus clubes y sus datos autorizados | Alta | Acceso a club ajeno devuelve 403/404 |
 | RF-08 | LISFI crea, activa, cierra y consulta temporadas | Alta | Estados coherentes y no se borra historial |
 | RF-09 | Acciones críticas quedan auditadas | Alta | Actor, acción, recurso, fecha y cambio relevante |
 | RF-10 | Listados admiten paginación, búsqueda y orden controlado | Media | Sin exponer datos de otros clubes |
@@ -71,21 +71,21 @@ Un usuario puede pertenecer a varios clubes. Se recomienda que el rol administra
 ### Reglas de negocio
 
 - **RB-01:** un administrador puede gestionar varios clubes; múltiples administradores pueden coexistir.
-- **RB-02:** un club puede tener N delegados y un delegado puede tener N clubes.
+- **RB-02:** un club puede tener N representantes y un representante puede tener N clubes.
 - **RB-03:** no se permite una segunda membresía activa equivalente `(user_id, club_id, role)`.
 - **RB-04:** no se eliminan físicamente clubes, temporadas ni usuarios con referencias históricas; se desactivan.
 - **RB-05:** los registros de un año anterior siguen consultables aunque la nueva temporada esté activa.
 - **RB-06:** un fichaje futuro será único por `(player_id, season_id, club_id)` para un intento inicial, pero debe permitir reenvíos/correcciones con historial; las transferencias y duplicados entre clubes se bloquearán por reglas acordadas.
-- **RB-07:** un fichaje nunca se considera aprobado solo porque el delegado lo cargó; requiere autorización del responsable y validación de LISFI.
+- **RB-07:** un fichaje nunca se considera aprobado solo porque el representante lo cargó; requiere autorización del responsable y validación de LISFI.
 - **RB-08:** el registro de salud no contiene diagnósticos ni documentos clínicos salvo futura decisión expresa y revisión legal.
 
 ## 5. Permisos iniciales
 
-| Operación | Admin LISFI | Delegado del club | Delegado de otro club | Responsable |
+| Operación | Admin LISFI | Representante del club | Representante de otro club | Responsable |
 |---|---|---|---|---|
 | Crear/modificar clubes | Sí | No | No | No |
 | Invitar administradores | Solo admin con permiso elevado* | No | No | No |
-| Invitar/revocar delegados | Sí | No | No | No |
+| Invitar/revocar representantes | Sí | No | No | No |
 | Ver detalle administrativo de club | Sí | Su club | No | No |
 | Crear/editar temporadas | Sí | No | No | No |
 | Consultar temporada actual | Sí | Sí | Sí | Pública si se decide |
@@ -108,18 +108,18 @@ La autorización se verifica **en cada endpoint y en cada consulta**, no solo oc
 
 **Errores:** nombre/slug inválido, slug duplicado, falta de permisos, caída de API.
 
-### F2. Invitar delegado
+### F2. Invitar representante
 
 1. Administrador selecciona club y usuario existente o crea una invitación por email.
-2. Selecciona membresía `CLUB_DELEGATE` para ese club.
+2. Selecciona membresía `CLUB_REPRESENTATIVE` para ese club.
 3. Usuario acepta invitación de un solo uso y establece sus credenciales de forma segura.
-4. La membresía queda activa; el delegado ve ese club en su selector de contexto.
+4. La membresía queda activa; el representante ve ese club en su selector de contexto.
 
 **Protecciones:** caducidad, reenvío controlado, límites de intentos, no revelar datos de usuarios ajenos.
 
 ### F3. Cambiar de club
 
-1. Un delegado con varias membresías selecciona club A o B.
+1. Un representante con varias membresías selecciona club A o B.
 2. El frontend actualiza el contexto visible.
 3. La API verifica membresía para cada solicitud, independientemente del selector.
 
@@ -156,7 +156,7 @@ La autorización se verifica **en cada endpoint y en cada consulta**, no solo oc
 | `guardians` | `id`, `dni`, `first_name`, `last_name`, `email`, `phone` | Un adulto puede representar varios menores |
 | `player_guardians` | `id`, `player_id`, `guardian_id`, `relationship`, `verification_status`, `verified_by`, `verified_at` | Relación explícita, revisable y revocable |
 | `registrations` | `id`, `player_id`, `club_id`, `season_id`, `status`, `submitted_by`, `submitted_at`, `approved_by`, `approved_at` | Renovación = nuevo registro en nueva temporada |
-| `authorization_requests` | `id`, `registration_id`, `guardian_id`, `status`, `expires_at`, `created_at` | Nunca autoriza el delegado automáticamente |
+| `authorization_requests` | `id`, `registration_id`, `guardian_id`, `status`, `expires_at`, `created_at` | Nunca autoriza el representante automáticamente |
 | `consents` | `id`, `authorization_request_id`, `terms_version`, `document_hash`, `accepted_at`, `verification_method` | Consentimiento de inscripción separado del de publicación |
 | `identity_reviews` | `id`, `guardian_id`, `status`, `reviewed_by`, `reviewed_at`, `evidence_expiry_at` | Identidad y vínculo son revisiones distintas |
 | `document_objects` | `id`, `owner_type`, `owner_id`, `r2_key`, `purpose`, `retention_until`, `deleted_at` | No guardar URL pública ni contenido binario en D1 |
@@ -194,7 +194,7 @@ CREATE TABLE club_memberships (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
   club_id TEXT NOT NULL REFERENCES clubs(id),
-  role TEXT NOT NULL CHECK (role IN ('CLUB_DELEGATE')),
+  role TEXT NOT NULL CHECK (role IN ('CLUB_REPRESENTATIVE')),
   status TEXT NOT NULL CHECK (status IN ('ACTIVE','REVOKED')),
   created_at TEXT NOT NULL,
   revoked_at TEXT
@@ -250,12 +250,12 @@ CREATE TABLE audit_logs (
 | Método | Ruta | Autorización | Resultado |
 |---|---|---|---|
 | `GET` | `/api/me` | Autenticado | Usuario, roles y clubes permitidos |
-| `GET` | `/api/clubs` | Admin o delegado | Lista filtrada por permisos |
+| `GET` | `/api/clubs` | Admin o representante | Lista filtrada por permisos |
 | `POST` | `/api/clubs` | Admin | Nuevo club |
 | `PATCH` | `/api/clubs/:id` | Admin | Modificación validada |
-| `POST` | `/api/clubs/:id/delegates/invitations` | Admin | Invitación temporal |
-| `GET` | `/api/clubs/:id/delegates` | Admin | Delegados asociados |
-| `DELETE` | `/api/clubs/:id/delegates/:membershipId` | Admin | Revocación lógica |
+| `POST` | `/api/clubs/:id/representatives/invitations` | Admin | Invitación temporal |
+| `GET` | `/api/clubs/:id/representatives` | Admin | Representantes asociados |
+| `DELETE` | `/api/clubs/:id/representatives/:membershipId` | Admin | Revocación lógica |
 | `GET` | `/api/seasons` | Autenticado | Temporadas |
 | `POST` | `/api/seasons` | Admin | Nueva temporada |
 | `PATCH` | `/api/seasons/:id` | Admin | Cambio de estado permitido |
@@ -265,7 +265,7 @@ Para mutaciones: validación Zod; códigos HTTP apropiados (`400`, `401`, `403`,
 
 ## 9. No funcionales y seguridad
 
-- **NFR-01 Aislamiento:** todas las consultas de delegado restringidas a clubes con membresía `ACTIVE`.
+- **NFR-01 Aislamiento:** todas las consultas de representante restringidas a clubes con membresía `ACTIVE`.
 - **NFR-02 Seguridad:** TLS; cookies HttpOnly/Secure/SameSite; MFA para administradores; secretos fuera del repositorio.
 - **NFR-03 Privacidad:** mínimo de datos personales; acceso a documentos de Etapa 2 solo a revisores habilitados; no publicar DNI.
 - **NFR-04 Trazabilidad:** eventos de altas, roles, revocaciones y aprobaciones no editables desde UI.
@@ -282,10 +282,10 @@ Antes de registrar datos reales de menores o recibir DNI en R2, LISFI debe revis
 ## 10. Criterios de aceptación (Definition of Done)
 
 1. Dos administradores distintos pueden iniciar sesión y gestionar clubes con trazabilidad individual.
-2. Un club A admite al menos dos delegados con cuentas independientes.
-3. Un delegado asociado a clubes A y B puede cambiar de contexto y operar en ambos.
-4. Un delegado de A no accede ni por URL ni por API a datos internos de B si no está asignado.
-5. Un administrador puede revocar un delegado y el acceso desaparece incluso con una sesión previa.
+2. Un club A admite al menos dos representantes con cuentas independientes.
+3. Un representante asociado a clubes A y B puede cambiar de contexto y operar en ambos.
+4. Un representante de A no accede ni por URL ni por API a datos internos de B si no está asignado.
+5. Un administrador puede revocar un representante y el acceso desaparece incluso con una sesión previa.
 6. Se puede crear y cerrar una temporada sin borrar las temporadas históricas.
 7. Las migraciones se ejecutan desde cero en desarrollo y en ambiente de prueba.
 8. CI ejecuta lint, chequeo de tipos y tests relevantes; el despliegue se realiza desde una rama controlada.
@@ -316,4 +316,4 @@ Antes de registrar datos reales de menores o recibir DNI en R2, LISFI debe revis
 
 ## 13. Siguiente tarea recomendada
 
-Crear el repositorio y una prueba vertical pequeña: login de dos administradores, alta de club, invitación de dos delegados y comprobación automatizada de que un delegado ajeno recibe `403/404`. Esa prueba validará la elección de biblioteca de autenticación, ORM y Workers/D1 antes de ampliar el dominio.
+Crear el repositorio y una prueba vertical pequeña: login de dos administradores, alta de club, invitación de dos representantes y comprobación automatizada de que un representante ajeno recibe `403/404`. Esa prueba validará la elección de biblioteca de autenticación, ORM y Workers/D1 antes de ampliar el dominio.
