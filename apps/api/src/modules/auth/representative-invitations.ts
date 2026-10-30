@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { hashPassword } from 'better-auth/crypto';
 import {
   adminInvitationAcceptSchema,
+  existingRepresentativeInvitationAcceptSchema,
   representativeInvitationRequestSchema,
 } from '@lisfi/shared';
 import type { Bindings } from '../../env';
@@ -24,6 +25,68 @@ const activePresident = (id: string, club: string) => `EXISTS (
   AND m.revoked_at IS NULL AND u.status='ACTIVE')`;
 
 export const representativeInvitationRoutes = new Hono<ProtectedEnv>();
+representativeInvitationRoutes.post(
+  '/accept-existing',
+  bodyLimit({ maxSize: 8192 }),
+  async (c) => {
+    const actor = c.get('identity');
+    if (actor.isLeagueAdmin && !actor.mfaEnabled)
+      return c.json({ error: 'Forbidden' }, 403);
+    if (c.req.header('origin') !== new URL(c.env.AUTH_BASE_URL!).origin)
+      return c.json({ error: 'Forbidden origin' }, 403);
+    const input = existingRepresentativeInvitationAcceptSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!input.success) return c.json({ error: 'Invalid invitation' }, 400);
+    const nowMs = Date.now();
+    const attempts = await c.env.DB.prepare(
+      `INSERT INTO "rateLimit" (id,key,count,lastRequest) VALUES (?,?,1,?)
+    ON CONFLICT(key) DO UPDATE SET count=CASE WHEN lastRequest<=? THEN 1 ELSE count+1 END,
+    lastRequest=CASE WHEN lastRequest<=? THEN excluded.lastRequest ELSE lastRequest END RETURNING count`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        `existing-representative-invite:${actor.id}`,
+        nowMs,
+        nowMs - 60000,
+        nowMs - 60000,
+      )
+      .first<{ count: number }>();
+    if (!attempts || attempts.count > 5)
+      return c.json({ error: 'Too many attempts' }, 429);
+    const tokenHash = await digest(input.data.token);
+    const operation = crypto.randomUUID();
+    const changeId = crypto.randomUUID();
+    const now = new Date(nowMs).toISOString();
+    try {
+      const result = await c.env.DB.batch([
+        c.env.DB.prepare(
+          `UPDATE representative_invitations SET accepted_at=?,accepted_user_id=?,acceptance_operation_id=?
+        WHERE token_hash=? AND kind='REPRESENTATIVE' AND accepted_at IS NULL AND expires_at>?
+        AND ${activePresident('representative_invitations.invited_by', 'representative_invitations.club_id')}
+        AND EXISTS (SELECT 1 FROM clubs WHERE id=representative_invitations.club_id AND status='ACTIVE')
+        AND EXISTS (SELECT 1 FROM "user" u WHERE u.id=? AND u.status='ACTIVE' AND lower(u.email)=lower(representative_invitations.email))
+        AND NOT EXISTS (SELECT 1 FROM club_memberships m WHERE m.user_id=? AND m.club_id=representative_invitations.club_id AND m.role='CLUB_REPRESENTATIVE' AND m.revoked_at IS NULL)`,
+        ).bind(now, actor.id, operation, tokenHash, now, actor.id, actor.id),
+        c.env.DB.prepare(
+          `INSERT INTO change_requests (id,kind,club_id,requester_id,payload_json,status,created_at)
+        SELECT ?,'REPRESENTATIVE',club_id,invited_by,json_object('entityId',?,'userId',accepted_user_id,'email',email),'PENDING',?
+        FROM representative_invitations WHERE token_hash=? AND acceptance_operation_id=?`,
+        ).bind(changeId, crypto.randomUUID(), now, tokenHash, operation),
+        c.env.DB.prepare(
+          `INSERT INTO audit_logs (id,actor_user_id,action,resource_type,resource_id,created_at,metadata_json)
+        SELECT ?,accepted_user_id,'REPRESENTATIVE_INVITATION_ACCEPTED','CHANGE_REQUEST',?,?,json_object('invitationId',id)
+        FROM representative_invitations WHERE token_hash=? AND acceptance_operation_id=?`,
+        ).bind(crypto.randomUUID(), changeId, now, tokenHash, operation),
+      ]);
+      if (result[0]!.meta.changes !== 1)
+        return c.json({ error: 'Invalid invitation' }, 400);
+    } catch {
+      return c.json({ error: 'Invalid invitation' }, 400);
+    }
+    return c.json({ requested: true }, 201);
+  },
+);
 representativeInvitationRoutes.post(
   '/',
   bodyLimit({ maxSize: 8192 }),

@@ -200,7 +200,9 @@ watch(
           maxlength="254"
         />
         <p class="hint">
-          Debe ser una cuenta existente, activa y con correo verificado.
+          Debe ser una cuenta existente y activa, con correo verificado o que
+          haya aceptado una invitación de la liga. La liga verifica su
+          identidad.
         </p></template
       >
       <template v-else

@@ -24,6 +24,7 @@ const stage = ref<
   | 'recover'
 >('loading');
 const invitationToken = ref('');
+const invitationExisting = ref(false);
 const email = ref('');
 const password = ref('');
 const code = ref('');
@@ -53,6 +54,52 @@ function passwordRecovered() {
   backToLogin();
   notice.value =
     'Contraseña cambiada. Ingresá nuevamente con tus credenciales.';
+}
+
+async function useExistingInvitation() {
+  invitationExisting.value = true;
+  busy.value = true;
+  error.value = '';
+  try {
+    if (await loadSession()) stage.value = 'representative-invitation';
+    else notice.value = 'Ingresá con la cuenta invitada para continuar.';
+  } catch {
+    stage.value = 'unavailable';
+    error.value = 'No pudimos consultar tu sesión. Intentá nuevamente.';
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function existingInvitationAccepted() {
+  invitationToken.value = '';
+  invitationExisting.value = false;
+  await restore();
+  notice.value =
+    'Solicitud enviada. El acceso al club requiere dos aprobaciones de la liga.';
+}
+
+async function switchInvitationAccount() {
+  if (busy.value) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    const response = await fetch('/api/auth/sign-out', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error('sign out failed');
+    identity.value = null;
+    stage.value = 'login';
+    notice.value = 'Ingresá con la cuenta invitada para continuar.';
+  } catch {
+    error.value = 'No pudimos cerrar la sesión. Volvé a intentar.';
+  } finally {
+    busy.value = false;
+  }
 }
 
 function sessionExpired() {
@@ -156,6 +203,8 @@ async function submit() {
         stage.value = 'unavailable';
         if (!(await loadSession()))
           error.value = 'La sesión no está activa. Volvé a ingresar.';
+        else if (invitationExisting.value)
+          stage.value = 'representative-invitation';
       }
     }
   } catch (cause) {
@@ -173,6 +222,7 @@ async function submit() {
 function backToLogin() {
   stage.value = 'login';
   invitationToken.value = '';
+  invitationExisting.value = false;
   code.value = '';
   error.value = '';
   notice.value = '';
@@ -242,7 +292,12 @@ onMounted(() => {
       v-if="stage === 'representative-invitation'"
       kind="representative"
       :initial-token="invitationToken"
+      :existing-session="invitationExisting && !!identity"
+      :account-name="identity?.user.name ?? ''"
       @created="representativeCreated"
+      @existing="useExistingInvitation"
+      @accepted-existing="existingInvitationAccepted"
+      @switch-account="switchInvitationAccount"
       @cancel="backToLogin"
     />
     <form v-if="stage === 'login'" @submit.prevent="submit">

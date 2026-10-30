@@ -53,6 +53,7 @@ export const representativeInvitations = sqliteTable(
     expiresAt: text('expires_at').notNull(),
     acceptedAt: text('accepted_at'),
     acceptedUserId: text('accepted_user_id'),
+    acceptanceOperationId: text('acceptance_operation_id'),
   },
 );
 

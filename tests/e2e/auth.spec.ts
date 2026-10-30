@@ -34,6 +34,48 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test('an existing representative logs in and accepts a club invitation', async ({
+  page,
+}) => {
+  let signedIn = false;
+  const token = 'b'.repeat(64);
+  await page.route('**/api/me', (route) =>
+    route.fulfill({
+      status: signedIn ? 200 : 401,
+      json: signedIn ? identity : {},
+    }),
+  );
+  await page.route('**/api/auth/sign-in/email', (route) => {
+    signedIn = true;
+    return route.fulfill({ json: {} });
+  });
+  await page.route(
+    '**/api/representative-invitations/accept-existing',
+    (route) => {
+      expect(route.request().postDataJSON()).toEqual({ token });
+      return route.fulfill({ status: 201, json: { requested: true } });
+    },
+  );
+  await page.goto(`/#representative-invitation=${token}`);
+  await expect(page).not.toHaveURL(/representative-invitation/);
+  await page.getByRole('button', { name: 'Ya tengo una cuenta' }).click();
+  await page
+    .getByLabel('Correo electrónico')
+    .fill('representative@example.invalid');
+  await page.getByLabel('Contraseña', { exact: true }).fill('test-password');
+  await page.getByRole('button', { name: 'Ingresar', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Aceptar con mi cuenta' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Aceptar con mi cuenta' }).click();
+  await expect(
+    page.getByText('Solicitud enviada.', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Representante de prueba', { exact: true }),
+  ).toBeVisible();
+});
+
 test('MFA setup retries password errors and removes secrets when session expires', async ({
   page,
 }) => {

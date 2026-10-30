@@ -1082,6 +1082,151 @@ describe('club management and atomic audit', () => {
       .run();
     return { id, version: 1 };
   }
+  it('lets an existing representative accept a second club invitation with two approvals and no duplicate identity', async () => {
+    await administrator();
+    const firstAdmin = cookie;
+    const secondAdmin = await secondAdministrator();
+    cookie = firstAdmin;
+    const clubB = await createClub();
+    const now = new Date().toISOString();
+    const db = createDb(env.DB);
+    await db.insert(clubs).values([
+      { id: 'club-a', name: 'Club A', slug: 'club-a', createdAt: now },
+      { id: 'club-c', name: 'Club C', slug: 'club-c', createdAt: now },
+    ]);
+    await seedUser('existing-rep');
+    await seedUser('president-b');
+    await seedUser('wrong-user');
+    await env.DB.prepare('UPDATE "user" SET "emailVerified"=0 WHERE id=?')
+      .bind('existing-rep')
+      .run();
+    await db.insert(clubMemberships).values([
+      { id: 'rep-a', userId: 'existing-rep', clubId: 'club-a', createdAt: now },
+      {
+        id: 'president-b-membership',
+        userId: 'president-b',
+        clubId: clubB.id,
+        createdAt: now,
+      },
+    ]);
+    await env.DB.prepare(
+      'INSERT INTO club_president_authorities (id,membership_id,club_id,user_id,created_at) VALUES (?,?,?,?,?)',
+    )
+      .bind(
+        'president-b-authority',
+        'president-b-membership',
+        clubB.id,
+        'president-b',
+        now,
+      )
+      .run();
+    ipCounter++;
+    await login('president-b');
+    const invitation = await request('/api/representative-invitations', {
+      clubId: clubB.id,
+      email: 'existing-rep@example.invalid',
+    });
+    expect(invitation.status).toBe(201);
+    const token = ((await invitation.json()) as { token: string }).token;
+    ipCounter++;
+    await login('wrong-user');
+    expect(
+      (
+        await request('/api/representative-invitations/accept-existing', {
+          token,
+        })
+      ).status,
+    ).toBe(400);
+    ipCounter++;
+    await login('existing-rep');
+    const repCookie = cookie;
+    expect(
+      (
+        await request(
+          '/api/representative-invitations/accept-existing',
+          { token },
+          { origin: 'https://wrong.invalid' },
+        )
+      ).status,
+    ).toBe(403);
+    await env.DB.prepare(
+      "CREATE TRIGGER fail_existing_invite_audit BEFORE INSERT ON audit_logs WHEN NEW.action='REPRESENTATIVE_INVITATION_ACCEPTED' BEGIN SELECT RAISE(ABORT,'audit failure'); END",
+    ).run();
+    try {
+      expect(
+        (
+          await request('/api/representative-invitations/accept-existing', {
+            token,
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        await env.DB.prepare(
+          'SELECT accepted_at FROM representative_invitations WHERE email=?',
+        )
+          .bind('existing-rep@example.invalid')
+          .first('accepted_at'),
+      ).toBeNull();
+      expect(
+        await env.DB.prepare('SELECT count(*) FROM change_requests').first(
+          'count(*)',
+        ),
+      ).toBe(0);
+    } finally {
+      await env.DB.prepare('DROP TRIGGER fail_existing_invite_audit').run();
+    }
+    const accepted = await Promise.all([
+      request('/api/representative-invitations/accept-existing', { token }),
+      request('/api/representative-invitations/accept-existing', { token }),
+    ]);
+    expect(accepted.map((response) => response.status).sort()).toEqual([
+      201, 400,
+    ]);
+    expect(
+      await env.DB.prepare('SELECT count(*) FROM change_requests').first(
+        'count(*)',
+      ),
+    ).toBe(1);
+    expect(
+      await env.DB.prepare('SELECT count(*) FROM "user" WHERE email=?')
+        .bind('existing-rep@example.invalid')
+        .first('count(*)'),
+    ).toBe(1);
+    expect((await request('/api/clubs/club-a')).status).toBe(200);
+    expect((await request(`/api/clubs/${clubB.id}`)).status).toBe(404);
+    expect((await request('/api/clubs/club-c')).status).toBe(404);
+    const id = await env.DB.prepare(
+      "SELECT id FROM change_requests WHERE kind='REPRESENTATIVE'",
+    ).first<string>('id');
+    cookie = firstAdmin;
+    expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(200);
+    cookie = repCookie;
+    expect((await request(`/api/clubs/${clubB.id}`)).status).toBe(404);
+    cookie = secondAdmin;
+    expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(200);
+    cookie = repCookie;
+    expect((await request(`/api/clubs/${clubB.id}`)).status).toBe(200);
+    expect((await request('/api/clubs/club-c')).status).toBe(404);
+    const membership = await env.DB.prepare(
+      'SELECT id FROM club_memberships WHERE user_id=? AND club_id=? AND revoked_at IS NULL',
+    )
+      .bind('existing-rep', clubB.id)
+      .first<string>('id');
+    cookie = firstAdmin;
+    expect(
+      (
+        await request(
+          `/api/clubs/${clubB.id}/representatives/${membership}`,
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(200);
+    cookie = repCookie;
+    expect((await request(`/api/clubs/${clubB.id}`)).status).toBe(404);
+    expect((await request('/api/clubs/club-a')).status).toBe(200);
+  }, 45000);
   it('replaces a president atomically, revokes only that club and invalidates outstanding invitations', async () => {
     await administrator();
     const firstCookie = cookie;

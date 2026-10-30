@@ -2,9 +2,20 @@
 import { ref } from 'vue';
 import { adminInvitationAcceptSchema } from '@lisfi/shared';
 import { postAuth } from './api';
-const emit = defineEmits<{ created: [email: string]; cancel: [] }>();
+const emit = defineEmits<{
+  created: [email: string];
+  cancel: [];
+  existing: [];
+  acceptedExisting: [];
+  switchAccount: [];
+}>();
 const props = withDefaults(
-  defineProps<{ kind?: 'admin' | 'representative'; initialToken?: string }>(),
+  defineProps<{
+    kind?: 'admin' | 'representative';
+    initialToken?: string;
+    existingSession?: boolean;
+    accountName?: string;
+  }>(),
   { kind: 'admin', initialToken: '' },
 );
 const name = ref('');
@@ -14,6 +25,23 @@ const confirmation = ref('');
 const token = ref(props.initialToken);
 const busy = ref(false);
 const error = ref('');
+async function acceptExisting() {
+  if (busy.value) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    await postAuth('/api/representative-invitations/accept-existing', {
+      token: token.value.trim(),
+    });
+    token.value = '';
+    emit('acceptedExisting');
+  } catch {
+    error.value =
+      'No se pudo aceptar el enlace. Comprobá que ingresaste con la cuenta invitada o pedí un enlace nuevo.';
+  } finally {
+    busy.value = false;
+  }
+}
 async function accept() {
   if (busy.value) return;
   const parsed = adminInvitationAcceptSchema.safeParse({
@@ -59,7 +87,33 @@ async function accept() {
       }}
     </p>
     <p v-if="error" role="alert">{{ error }}</p>
-    <form @submit.prevent="accept">
+    <div v-if="kind === 'representative' && existingSession">
+      <p>
+        Vas a solicitar acceso con la cuenta de {{ accountName }}. Se requieren
+        dos aprobaciones de la liga. Esta opción es para invitaciones de
+        representante.
+      </p>
+      <button :disabled="busy" @click="acceptExisting">
+        Aceptar con mi cuenta
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        :disabled="busy"
+        @click="emit('switchAccount')"
+      >
+        Usar otra cuenta
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        :disabled="busy"
+        @click="emit('cancel')"
+      >
+        Cancelar
+      </button>
+    </div>
+    <form v-else @submit.prevent="accept">
       <label for="invite-name">Nombre completo</label>
       <input
         id="invite-name"
@@ -109,6 +163,15 @@ async function accept() {
         :disabled="busy"
       />
       <button :disabled="busy">Crear cuenta</button>
+      <button
+        v-if="kind === 'representative'"
+        type="button"
+        class="secondary"
+        :disabled="busy"
+        @click="emit('existing')"
+      >
+        Ya tengo una cuenta
+      </button>
       <button
         type="button"
         class="secondary"

@@ -55,7 +55,7 @@ test('club president creates a representative invitation link', async ({
     page.getByRole('heading', { name: 'Invitar representante' }),
   ).toBeVisible();
   await page
-    .getByLabel('Correo del representante')
+    .getByLabel('Correo de la persona invitada')
     .fill('delegate@example.invalid');
   await page.getByRole('button', { name: 'Generar enlace' }).click();
   await expect(

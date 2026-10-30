@@ -1,0 +1,1 @@
+ALTER TABLE `representative_invitations` ADD `acceptance_operation_id` text;

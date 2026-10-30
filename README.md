@@ -174,8 +174,11 @@ correo exacto usado para crear la invitación. Cada enlace vence en una hora, es
 un solo uso y no verifica que la persona controle ese correo. Al aceptar una
 invitación de representante se crea una cuenta y una solicitud de membresía;
 dos administradores distintos deben
-aprobarla antes de que exista acceso al club. Las cuentas existentes pueden ser
-asignadas a otros clubes mediante solicitudes de cambio.
+aprobarla antes de que exista acceso al club. Un representante con cuenta existente
+puede abrir el enlace, elegir **Ya tengo una cuenta**, iniciar sesión con el correo
+invitado y aceptar; las dos aprobaciones habilitan el nuevo club sin crear otra
+cuenta ni afectar sus membresías anteriores. También puede solicitarse la asignación
+por correo desde el formulario de cambios.
 
 Las solicitudes se consultan en la sección de cambios de los administradores; aún
 no se envían avisos automáticos. Al aceptar la invitación del primer presidente,

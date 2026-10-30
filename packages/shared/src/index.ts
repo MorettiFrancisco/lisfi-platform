@@ -51,6 +51,10 @@ export const representativeInvitationRequestSchema = z
   })
   .strict();
 
+export const existingRepresentativeInvitationAcceptSchema = z
+  .object({ token: z.string().regex(/^[a-f0-9]{64}$/) })
+  .strict();
+
 export const recoveryLinkRequestSchema = z
   .object({ userId: z.string().min(1).max(128) })
   .strict();

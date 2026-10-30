@@ -51,8 +51,14 @@ async function create() {
           : 'La aceptación habilita al presidente para este club.'
       }}
     </p>
+    <p v-if="kind === 'REPRESENTATIVE'">
+      Si la persona ya tiene cuenta, puede iniciar sesión y aceptar el enlace
+      con esa misma cuenta.
+    </p>
     <form @submit.prevent="create">
-      <label for="representative-invite-email">Correo del representante</label>
+      <label for="representative-invite-email"
+        >Correo de la persona invitada</label
+      >
       <input
         id="representative-invite-email"
         v-model="email"

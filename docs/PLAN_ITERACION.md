@@ -27,7 +27,7 @@ club. Las membresías de representantes conservan la doble aprobación.
 
 ## Próximas entregas propuestas
 
-1. Completar y probar el flujo de representantes con cuenta existente y membresías
+1. Validar con LISFI el flujo de representantes con cuenta existente y membresías
    en varios clubes; definir el tratamiento de solicitudes pendientes al revocar
    al presidente solicitante o a un administrador aprobador.
 2. Incorporar documentación OpenAPI interactiva y definir y ensayar la recuperación

@@ -33,13 +33,13 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 ## Verificación y estado local
 
 - En la última ejecución completa `pnpm check` pasó: formato, ESLint, TypeScript,
-  45 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
+  46 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
 - Playwright ejecutó las pruebas existentes en escritorio y móvil: 19 pasaron y
   una prueba de bootstrap se omitió en móvil por configuración. La nueva prueba
   de la pantalla de invitación del presidente pasó en ambos tamaños por separado.
   La prueba de pantalla nueva usa respuestas simuladas; el circuito de permisos,
   invitaciones y doble aprobación también se comprobó en integración con D1 emulada.
-- Las migraciones hasta `0013` se aplicaron a D1 **local**; no se aplicaron en una
+- Las migraciones hasta `0014` se aplicaron a D1 **local**; no se aplicaron en una
   base remota. No hay datos personales reales de prueba ni secretos versionados.
 - Para retomar: instalar Node y pnpm según [README](../README.md), ejecutar
   `pnpm install`, `pnpm db:migrate:local` y `pnpm dev`. La configuración y el
@@ -62,10 +62,10 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
    de acceso o MFA del administrador inicial, ni para recuperar MFA perdido de
    otras cuentas. Definir responsables y controles antes de un piloto; no borrar
    el registro de bootstrap ni modificar la base manualmente para eludirlo.
-4. **Cuentas existentes:** las invitaciones crean cuentas nuevas. Un representante
-   existente se vincula a otro club mediante una solicitud por correo y doble
-   aprobación; falta validar ese recorrido de punta a punta con LISFI y definir
-   una experiencia clara de invitación para una persona con cuenta previa.
+4. **Cuentas existentes:** el representante puede aceptar el enlace con una
+   sesión de la cuenta invitada. La incorporación al nuevo club requiere dos
+   aprobaciones y conserva las demás membresías. Falta aceptación integral con
+   LISFI y una experiencia equivalente para presidentes con cuenta previa.
 5. **Privacidad y operación:** acordar verificación de identidad y teléfono,
    eventual verificación del correo, retención de auditoría, backups cifrados y
    una restauración ensayada. Las pruebas actuales no sustituyen una aceptación
