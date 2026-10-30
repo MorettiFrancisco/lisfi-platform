@@ -1,8 +1,8 @@
 # Estado y próximas iteraciones de LISFI
 
-Revisión del 29 de octubre de 2026 sobre `e588248`, antes de las correcciones
-derivadas de la auditoría de esta sesión. El objetivo sigue siendo completar la
-Etapa 1 en entregas pequeñas; no se realizó ningún despliegue.
+Actualización del 29 de octubre de 2026 sobre `e4a976b`. El objetivo sigue siendo
+completar la Etapa 1 en entregas pequeñas; no se realizó ningún despliegue. Para
+retomar con el estado completo y las prioridades, ver [continuidad](CONTINUIDAD_PROYECTO.md).
 
 ## Lo que ya existe
 
