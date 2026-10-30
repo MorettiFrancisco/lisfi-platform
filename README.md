@@ -37,12 +37,22 @@ pnpm dev
 - Frontend: <http://127.0.0.1:5173>
 - API: <http://127.0.0.1:8787/api/health>
 - Respuesta esperada: `{"status":"ok","service":"lisfi-api"}`.
+- Documentación interactiva: <http://127.0.0.1:5173/docs/api>.
+- Especificación OpenAPI: <http://127.0.0.1:5173/api/openapi.json>.
 
 Vite envía `/api/*` al Worker local. La pantalla comprueba el contrato con Zod,
 muestra errores de conexión y permite reintentar. Detené los procesos con Ctrl+C.
 También podés ejecutar `pnpm dev:web` y `pnpm dev:api` en terminales separadas.
 Los puertos locales son 5173 y 8787. Las pruebas E2E usan 5174 y 8788 para no
 interrumpir una sesión de desarrollo abierta.
+
+Swagger UI se sirve desde el proyecto, sin CDN ni validador remoto. **Try it out**
+ejecuta operaciones reales sobre la base configurada; usá datos ficticios en local.
+Para probar rutas protegidas, iniciá sesión desde la aplicación en el mismo origen
+y completá MFA si corresponde. El navegador envía su cookie; las mutaciones también
+exigen el `Origin` configurado. La referencia cubre las rutas principales de LISFI;
+Better Auth expone rutas adicionales y algunas reglas de negocio se describen en
+texto, ya que no pueden expresarse íntegramente en el esquema generado desde Zod.
 
 ## Estructura
 

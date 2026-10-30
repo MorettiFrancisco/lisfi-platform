@@ -12,6 +12,7 @@
   "dependencies": {
     "@lisfi/shared": "workspace:*",
     "qrcode": "1.5.4",
+    "swagger-ui-dist": "5.34.0",
     "vue": "3.5.44"
   },
   "devDependencies": {

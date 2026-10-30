@@ -96,6 +96,23 @@ test('real Worker: bootstrap, enroll MFA, sign in and recover access', async ({
   ).toBeVisible();
   await expect(qr).toHaveCount(0);
   await expect(page.locator('.recovery-codes')).toHaveCount(0);
+  // Swagger uses the same-origin browser session and must not bypass MFA.
+  await page.goto('/docs/api');
+  await expect(page.locator('.swagger-ui')).toContainText('LISFI API');
+  await page
+    .locator('.opblock')
+    .filter({ hasText: '/api/me' })
+    .locator('.opblock-summary')
+    .click();
+  await page.getByRole('button', { name: 'Try it out' }).click();
+  await page.getByRole('button', { name: 'Execute' }).click();
+  await expect(page.locator('.responses-inner')).toContainText(
+    'Administrador de prueba',
+  );
+  await page.goto('/');
+  await expect(
+    page.getByText('Administrador de prueba', { exact: true }),
+  ).toBeVisible();
   // The first administrator may request a club, but cannot create it alone.
   await page.getByRole('button', { name: 'Nuevo club', exact: true }).click();
   await page.getByLabel('Nombre del club').fill('Estrella del Sur');

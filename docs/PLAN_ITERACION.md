@@ -30,7 +30,7 @@ club. Las membresías de representantes conservan la doble aprobación.
 1. Validar con LISFI el flujo de representantes con cuenta existente y membresías
    en varios clubes; definir el tratamiento de solicitudes pendientes al revocar
    al presidente solicitante o a un administrador aprobador.
-2. Incorporar documentación OpenAPI interactiva y definir y ensayar la recuperación
+2. Mantener la documentación OpenAPI interactiva y definir y ensayar la recuperación
    de emergencia del administrador inicial y la pérdida de MFA.
 3. Validar con LISFI la verificación de identidad y número para WhatsApp; preparar
    backups cifrados, restauración probada, retención de auditoría, alertas,

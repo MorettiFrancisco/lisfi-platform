@@ -9,6 +9,9 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 - Monorepo pnpm con Vue 3, TypeScript y Vite; API Hono en Cloudflare Workers;
   D1, Drizzle y validaciones Zod compartidas. Hay configuración de GitHub Actions,
   scripts de desarrollo, migraciones, pruebas y builds, y `/api/health`.
+- Referencia OpenAPI en `/api/openapi.json` y Swagger UI local en `/docs/api` del
+  frontend. Los contratos principales se generan desde Zod; la referencia se
+  mantiene de forma incremental y no enumera todos los endpoints de Better Auth.
 - Autenticación con Better Auth, bootstrap restringido para el administrador
   inicial, sesiones y MFA para administradores. El administrador inicial puede
   invitar y revocar a otros administradores; todos los administradores deben
@@ -33,12 +36,15 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 ## Verificación y estado local
 
 - En la última ejecución completa `pnpm check` pasó: formato, ESLint, TypeScript,
-  46 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
+  47 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
 - Playwright ejecutó las pruebas existentes en escritorio y móvil: 19 pasaron y
   una prueba de bootstrap se omitió en móvil por configuración. La nueva prueba
   de la pantalla de invitación del presidente pasó en ambos tamaños por separado.
   La prueba de pantalla nueva usa respuestas simuladas; el circuito de permisos,
   invitaciones y doble aprobación también se comprobó en integración con D1 emulada.
+- Swagger UI se probó en escritorio y móvil ejecutando `/api/health` sin conexiones
+  externas. Una prueba de navegador con Worker y D1 temporales verificó `/api/me`
+  desde Swagger con una sesión administrativa y MFA reales.
 - Las migraciones hasta `0014` se aplicaron a D1 **local**; no se aplicaron en una
   base remota. No hay datos personales reales de prueba ni secretos versionados.
 - Para retomar: instalar Node y pnpm según [README](../README.md), ejecutar

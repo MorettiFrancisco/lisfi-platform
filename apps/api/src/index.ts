@@ -8,9 +8,11 @@ import { bootstrapRoutes } from './modules/auth/bootstrap';
 import { adminInvitationAcceptanceRoutes } from './modules/auth/invitations';
 import { representativeInvitationAcceptanceRoutes } from './modules/auth/representative-invitations';
 import { recoveryAcceptanceRoutes } from './modules/auth/recovery';
+import { openApiDocument } from './openapi';
 
 const app = new Hono<{ Bindings: Bindings }>();
 app.use('*', secureHeaders());
+app.get('/api/openapi.json', (c) => c.json(openApiDocument));
 app.get('/api/health', (c) => {
   c.header('Cache-Control', 'no-store');
   return c.json({

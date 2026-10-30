@@ -9,5 +9,6 @@ minimumReleaseAgeExclude:
 saveExact: true
 engineStrict: true
 allowBuilds:
+  '@scarf/scarf': false
   esbuild: true
   workerd: true
