@@ -17,6 +17,9 @@ import { changeRoutes } from '../changes/routes';
 import { seasonRoutes } from '../seasons/routes';
 import { auditRoutes } from '../audit/routes';
 import { adminInvitationRoutes } from './invitations';
+import { representativeInvitationRoutes } from './representative-invitations';
+import { recoveryRoutes } from './recovery';
+import { administratorRoutes } from './administrators';
 
 type Auth = ReturnType<typeof createAuth>;
 type Identity = {
@@ -107,11 +110,20 @@ protectedRoutes.get('/me', async (c) => {
       .from(initialAdminBootstrap)
       .where(eq(initialAdminBootstrap.userId, identity.id))
       .get());
+  const presidentRows = await c.env.DB.prepare(
+    `SELECT p.club_id FROM club_president_authorities p
+    JOIN club_memberships m ON m.id=p.membership_id AND m.user_id=p.user_id AND m.club_id=p.club_id
+    JOIN clubs c ON c.id=p.club_id
+    WHERE p.user_id=? AND p.revoked_at IS NULL AND m.revoked_at IS NULL AND c.status='ACTIVE'`,
+  )
+    .bind(identity.id)
+    .all<{ club_id: string }>();
   return c.json({
     user: { id: identity.id, name: identity.name },
     roles: identity.isLeagueAdmin ? ['LEAGUE_ADMIN'] : [],
     mfaRequired: identity.isLeagueAdmin && !identity.mfaEnabled,
     canManageAdmins,
+    presidentClubIds: presidentRows.results.map((row) => row.club_id),
     clubs: memberships,
   } satisfies MeResponse);
 });
@@ -121,3 +133,9 @@ protectedRoutes.route('/changes', changeRoutes);
 protectedRoutes.route('/seasons', seasonRoutes);
 protectedRoutes.route('/audit-logs', auditRoutes);
 protectedRoutes.route('/admin-invitations', adminInvitationRoutes);
+protectedRoutes.route('/recovery-links', recoveryRoutes);
+protectedRoutes.route('/administrators', administratorRoutes);
+protectedRoutes.route(
+  '/representative-invitations',
+  representativeInvitationRoutes,
+);

@@ -90,7 +90,7 @@ clubRoutes.get('/:id', async (c) => {
       `SELECT id, name, position FROM club_officials WHERE club_id = ? AND ended_at IS NULL ORDER BY name, id`,
     ).bind(club.id),
     c.env.DB.prepare(
-      `SELECT u.id, u.name FROM club_memberships m JOIN "user" u ON u.id = m.user_id
+      `SELECT u.id, u.name, m.id AS membershipId FROM club_memberships m JOIN "user" u ON u.id = m.user_id
       WHERE m.club_id = ? AND m.role = 'CLUB_REPRESENTATIVE' AND m.revoked_at IS NULL AND u.status = 'ACTIVE' ORDER BY u.name, u.id`,
     ).bind(club.id),
     c.env.DB.prepare(
@@ -110,6 +110,40 @@ clubRoutes.get('/:id', async (c) => {
       .map(({ id, name }) => ({ id, name })),
     players: players!.results,
   });
+});
+
+clubRoutes.delete('/:id/representatives/:membershipId', async (c) => {
+  const actor = c.get('identity');
+  const now = new Date().toISOString();
+  const auditId = crypto.randomUUID();
+  const result = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO audit_logs (id,actor_user_id,action,resource_type,resource_id,created_at,metadata_json)
+      SELECT ?,?,'MEMBERSHIP_REVOKED','CLUB',club_id,?,json_object('membershipId',id,'userId',user_id)
+      FROM club_memberships WHERE id=? AND club_id=? AND role='CLUB_REPRESENTATIVE' AND revoked_at IS NULL
+      AND EXISTS (SELECT 1 FROM global_role_assignments g JOIN "user" u ON u.id=g.user_id
+        WHERE g.user_id=? AND g.role='LEAGUE_ADMIN' AND g.revoked_at IS NULL AND u.status='ACTIVE' AND u."twoFactorEnabled"=1
+        AND EXISTS (SELECT 1 FROM "twoFactor" t WHERE t."userId"=u.id AND t.verified=1))`,
+    ).bind(
+      auditId,
+      actor.id,
+      now,
+      c.req.param('membershipId'),
+      c.req.param('id'),
+      actor.id,
+    ),
+    c.env.DB.prepare(
+      `UPDATE club_memberships SET revoked_at=? WHERE id=? AND club_id=? AND revoked_at IS NULL
+      AND EXISTS (SELECT 1 FROM audit_logs WHERE id=?)`,
+    ).bind(now, c.req.param('membershipId'), c.req.param('id'), auditId),
+    c.env.DB.prepare(
+      `UPDATE club_president_authorities SET revoked_at=? WHERE membership_id=? AND club_id=? AND revoked_at IS NULL
+      AND EXISTS (SELECT 1 FROM audit_logs WHERE id=?)`,
+    ).bind(now, c.req.param('membershipId'), c.req.param('id'), auditId),
+  ]);
+  if (result[1]!.meta.changes !== 1)
+    return c.json({ error: 'Membership unavailable' }, 404);
+  return c.json({ revoked: true });
 });
 
 clubRoutes.post('/', async (c) => {

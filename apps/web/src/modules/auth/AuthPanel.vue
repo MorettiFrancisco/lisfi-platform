@@ -8,6 +8,8 @@ import SeasonsPanel from '../seasons/SeasonsPanel.vue';
 import AuditPanel from '../audit/AuditPanel.vue';
 import AdminInvitationPanel from './AdminInvitationPanel.vue';
 import AcceptInvitationPanel from './AcceptInvitationPanel.vue';
+import RecoveryPanel from './RecoveryPanel.vue';
+import AdministratorsPanel from './AdministratorsPanel.vue';
 
 const identity = ref<MeResponse | null>(null);
 const stage = ref<
@@ -18,7 +20,10 @@ const stage = ref<
   | 'unavailable'
   | 'bootstrap'
   | 'invitation'
+  | 'representative-invitation'
+  | 'recover'
 >('loading');
+const invitationToken = ref('');
 const email = ref('');
 const password = ref('');
 const code = ref('');
@@ -35,6 +40,19 @@ function administratorCreated(accountEmail: string) {
   backToLogin();
   notice.value =
     'Cuenta creada. Ingresá con tu contraseña para configurar MFA.';
+}
+function representativeCreated(accountEmail: string) {
+  email.value = accountEmail;
+  invitationToken.value = '';
+  backToLogin();
+  notice.value =
+    'Cuenta creada. El acceso al club requiere dos aprobaciones de la liga.';
+}
+function passwordRecovered() {
+  invitationToken.value = '';
+  backToLogin();
+  notice.value =
+    'Contraseña cambiada. Ingresá nuevamente con tus credenciales.';
 }
 
 function sessionExpired() {
@@ -154,28 +172,50 @@ async function submit() {
 
 function backToLogin() {
   stage.value = 'login';
+  invitationToken.value = '';
   code.value = '';
   error.value = '';
   notice.value = '';
   recovery.value = false;
 }
 
-onMounted(restore);
+onMounted(() => {
+  const match =
+    /^#(admin-invitation|representative-invitation|recover)=([a-f0-9]{64})$/.exec(
+      window.location.hash,
+    );
+  if (match) {
+    invitationToken.value = match[2]!;
+    stage.value =
+      match[1] === 'recover'
+        ? 'recover'
+        : match[1] === 'admin-invitation'
+          ? 'invitation'
+          : 'representative-invitation';
+    window.history.replaceState(
+      null,
+      '',
+      window.location.pathname + window.location.search,
+    );
+  } else void restore();
+});
 </script>
 
 <template>
   <section aria-labelledby="access-title" :aria-busy="busy">
     <h2 id="access-title">
       {{
-        stage === 'invitation'
-          ? 'Aceptar invitación'
-          : stage === 'bootstrap'
-            ? 'Alta del primer administrador'
-            : stage === 'session'
-              ? 'Tu sesión'
-              : stage === 'mfa'
-                ? 'Verificá tu identidad'
-                : 'Ingresá a tu cuenta'
+        stage === 'recover'
+          ? 'Recuperar acceso'
+          : stage === 'invitation' || stage === 'representative-invitation'
+            ? 'Aceptar invitación'
+            : stage === 'bootstrap'
+              ? 'Alta del primer administrador'
+              : stage === 'session'
+                ? 'Tu sesión'
+                : stage === 'mfa'
+                  ? 'Verificá tu identidad'
+                  : 'Ingresá a tu cuenta'
       }}
     </h2>
     <p v-if="stage === 'loading'">Comprobando tu sesión…</p>
@@ -188,7 +228,21 @@ onMounted(restore);
     />
     <AcceptInvitationPanel
       v-if="stage === 'invitation'"
+      :initial-token="invitationToken"
       @created="administratorCreated"
+      @cancel="backToLogin"
+    />
+    <RecoveryPanel
+      v-if="stage === 'recover'"
+      :token="invitationToken"
+      @complete="passwordRecovered"
+      @cancel="backToLogin"
+    />
+    <AcceptInvitationPanel
+      v-if="stage === 'representative-invitation'"
+      kind="representative"
+      :initial-token="invitationToken"
+      @created="representativeCreated"
       @cancel="backToLogin"
     />
     <form v-if="stage === 'login'" @submit.prevent="submit">
@@ -314,6 +368,10 @@ onMounted(restore);
       <AdminInvitationPanel
         v-if="!identity.mfaRequired && identity.canManageAdmins"
       />
+      <AdministratorsPanel
+        v-if="!identity.mfaRequired && identity.canManageAdmins"
+        :current-user-id="identity.user.id"
+      />
       <button
         :disabled="busy || mfaBusy || clubsBusy || seasonsBusy"
         @click="submit"
@@ -324,6 +382,7 @@ onMounted(restore);
         v-if="!identity.mfaRequired"
         :key="identity.user.id"
         :is-league-admin="identity.roles.includes('LEAGUE_ADMIN')"
+        :president-club-ids="identity.presidentClubIds"
         @expired="sessionExpired"
         @recheck="restore"
         @busy="clubsBusy = $event"

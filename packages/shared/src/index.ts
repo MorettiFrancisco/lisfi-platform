@@ -14,6 +14,7 @@ export const meResponseSchema = z.object({
   mfaRequired: z.boolean(),
   canManageAdmins: z.boolean().default(false),
   clubs: z.array(z.object({ id: z.string(), name: z.string() })),
+  presidentClubIds: z.array(z.string()).default([]),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 
@@ -41,6 +42,24 @@ export const mfaEnrollmentSchema = z.object({
   totpURI: z.url({ protocol: /^otpauth$/, hostname: /^totp$/ }).max(2048),
   backupCodes: z.array(z.string().min(1)).min(1),
 });
+
+export const representativeInvitationRequestSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254),
+    clubId: z.string().min(1).max(128),
+    kind: z.enum(['PRESIDENT', 'REPRESENTATIVE']).default('REPRESENTATIVE'),
+  })
+  .strict();
+
+export const recoveryLinkRequestSchema = z
+  .object({ userId: z.string().min(1).max(128) })
+  .strict();
+export const recoveryAcceptSchema = z
+  .object({
+    token: z.string().regex(/^[a-f0-9]{64}$/),
+    password: z.string().min(12).max(128),
+  })
+  .strict();
 
 export * from './changes';
 

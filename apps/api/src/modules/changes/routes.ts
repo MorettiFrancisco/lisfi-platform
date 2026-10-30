@@ -74,6 +74,16 @@ changeRoutes.post('/', async (c) => {
       .first();
     if (!allowed) return c.json({ error: 'Not found' }, 404);
   }
+  if (input.kind === 'REPRESENTATIVE' && !identity.isLeagueAdmin) {
+    const president = await c.env.DB.prepare(
+      `SELECT 1 FROM club_president_authorities p JOIN club_memberships m
+       ON m.id=p.membership_id AND m.user_id=p.user_id AND m.club_id=p.club_id
+       WHERE p.club_id=? AND p.user_id=? AND p.revoked_at IS NULL AND m.revoked_at IS NULL`,
+    )
+      .bind(clubId, identity.id)
+      .first();
+    if (!president) return c.json({ error: 'Forbidden' }, 403);
+  }
   let payload: Record<string, unknown> = { entityId: crypto.randomUUID() };
   if (input.kind === 'CLUB') {
     if (

@@ -13,9 +13,9 @@ const issuerAllowed = `EXISTS (SELECT 1 FROM initial_admin_bootstrap b
   JOIN global_role_assignments g ON g.user_id=b.user_id AND g.role='LEAGUE_ADMIN' AND g.revoked_at IS NULL
   JOIN "user" u ON u.id=b.user_id AND u.status='ACTIVE' AND u."twoFactorEnabled"=1
   WHERE b.user_id=? AND EXISTS (SELECT 1 FROM "twoFactor" t WHERE t."userId"=u.id AND t.verified=1))`;
-const hex = (bytes: Uint8Array) =>
+export const hex = (bytes: Uint8Array) =>
   Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-const digest = async (value: string) =>
+export const digest = async (value: string) =>
   hex(
     new Uint8Array(
       await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),

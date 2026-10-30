@@ -34,6 +34,43 @@ export const adminInvitations = sqliteTable('admin_invitations', {
   acceptedUserId: text('accepted_user_id'),
 });
 
+export const representativeInvitations = sqliteTable(
+  'representative_invitations',
+  {
+    id: text('id').primaryKey(),
+    tokenHash: text('token_hash').notNull().unique(),
+    email: text('email').notNull(),
+    kind: text('kind', { enum: ['PRESIDENT', 'REPRESENTATIVE'] })
+      .notNull()
+      .default('REPRESENTATIVE'),
+    clubId: text('club_id')
+      .notNull()
+      .references(() => clubs.id),
+    invitedBy: text('invited_by')
+      .notNull()
+      .references(() => user.id),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    acceptedAt: text('accepted_at'),
+    acceptedUserId: text('accepted_user_id'),
+  },
+);
+
+export const recoveryLinks = sqliteTable('recovery_links', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id),
+  issuedBy: text('issued_by')
+    .notNull()
+    .references(() => user.id),
+  createdAt: text('created_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  usedAt: text('used_at'),
+  operationId: text('operation_id'),
+});
+
 export const clubs = sqliteTable(
   'clubs',
   {
@@ -94,6 +131,29 @@ export const clubMemberships = sqliteTable(
       .on(t.userId, t.clubId, t.role)
       .where(sql`${t.revokedAt} IS NULL`),
     index('membership_club_idx').on(t.clubId),
+  ],
+);
+
+export const clubPresidentAuthorities = sqliteTable(
+  'club_president_authorities',
+  {
+    id: text('id').primaryKey(),
+    membershipId: text('membership_id')
+      .notNull()
+      .references(() => clubMemberships.id),
+    clubId: text('club_id')
+      .notNull()
+      .references(() => clubs.id),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id),
+    createdAt: text('created_at').notNull(),
+    revokedAt: text('revoked_at'),
+  },
+  (t) => [
+    uniqueIndex('active_club_president_unique')
+      .on(t.clubId)
+      .where(sql`${t.revokedAt} IS NULL`),
   ],
 );
 

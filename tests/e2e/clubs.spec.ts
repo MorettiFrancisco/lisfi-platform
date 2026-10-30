@@ -21,6 +21,48 @@ const club = {
   players: [{ id: 'player', name: 'Jugador de prueba' }],
 };
 
+test('club president creates a representative invitation link', async ({
+  page,
+}) => {
+  await page.route('**/api/me', (route) =>
+    route.fulfill({
+      json: {
+        user: { id: 'president', name: 'President' },
+        roles: [],
+        mfaRequired: false,
+        clubs: [{ id: club.id, name: club.name }],
+        presidentClubIds: [club.id],
+      },
+    }),
+  );
+  await page.route('**/api/clubs?*', (route) =>
+    route.fulfill({ json: { items: [club], total: 1, page: 1, pageSize: 10 } }),
+  );
+  await page.route('**/api/clubs/club', (route) =>
+    route.fulfill({ json: club }),
+  );
+  await page.route('**/api/representative-invitations', (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      clubId: 'club',
+      email: 'delegate@example.invalid',
+      kind: 'REPRESENTATIVE',
+    });
+    return route.fulfill({ status: 201, json: { token: 'a'.repeat(64) } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Ver club Club de prueba' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Invitar representante' }),
+  ).toBeVisible();
+  await page
+    .getByLabel('Correo del representante')
+    .fill('delegate@example.invalid');
+  await page.getByRole('button', { name: 'Generar enlace' }).click();
+  await expect(
+    page.getByLabel('Enlace para compartir por WhatsApp'),
+  ).toHaveValue(/#representative-invitation=a{64}$/);
+});
+
 test('representative has read-only club detail and revoked access disappears from the list', async ({
   page,
 }, testInfo) => {

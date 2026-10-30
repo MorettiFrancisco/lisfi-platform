@@ -2,9 +2,9 @@
 
 Monorepo Vue/Hono con D1 y una primera base de autenticación y permisos en la API.
 La pantalla incluye ingreso con correo/contraseña, desafío TOTP, restauración y
-cierre de sesión, clubes asignados y estado del servicio. Invitaciones,
-recuperación por correo y administración de representantes son las
-siguientes entregas; no hay registro público ni cuentas predeterminadas.
+cierre de sesión, clubes asignados, invitaciones por enlace, recuperación de
+contraseña y administración de representantes; no hay registro público ni
+cuentas predeterminadas.
 
 Incluye alta controlada del primer administrador y configuración visual de MFA
 con QR local, clave manual y códigos de recuperación. El flujo completo se prueba
@@ -137,9 +137,9 @@ No cargar información personal real ni documentos de menores en desarrollo.
 
 El alta inicial usa un flujo separado, deshabilitado por defecto y protegido por
 una clave temporal. Signup público continúa cerrado. La persona administradora
-inicial puede invitar a otro administrador como se explica abajo. Las invitaciones
-de representantes, la revocación de privilegios y la recuperación por correo siguen
-pendientes.
+inicial puede invitar a otros administradores. Los administradores pueden invitar
+representantes y generar enlaces de recuperación para compartir por WhatsApp. Estos
+enlaces no verifican por sí solos el correo ni la identidad.
 
 ### Invitar a otro administrador
 
@@ -163,6 +163,39 @@ La creación, credencial, rol, consumo de clave y auditoría se guardan en un ú
 batch D1. La auditoría identifica al emisor y el recurso sin guardar claves ni
 correo. No hay revocación manual de invitaciones todavía: vencen en una hora y
 dejan de funcionar si el emisor pierde su rol, su cuenta activa o su MFA verificado.
+
+### Invitaciones, revocaciones y recuperación por WhatsApp
+
+Un administrador con MFA genera desde un club activo un enlace para su presidente.
+El presidente, una vez registrado, puede generar enlaces para los representantes
+de ese club. Antes de compartirlos por WhatsApp debe verificar por un canal
+independiente la identidad y el número de la persona. Debe comunicarle también el
+correo exacto usado para crear la invitación. Cada enlace vence en una hora, es de
+un solo uso y no verifica que la persona controle ese correo. Al aceptar una
+invitación de representante se crea una cuenta y una solicitud de membresía;
+dos administradores distintos deben
+aprobarla antes de que exista acceso al club. Las cuentas existentes pueden ser
+asignadas a otros clubes mediante solicitudes de cambio.
+
+Las solicitudes se consultan en la sección de cambios de los administradores; aún
+no se envían avisos automáticos. El permiso de presidente y la ficha institucional
+de presidencia son registros separados: cuando cambia el presidente, LISFI debe
+revocar la membresía de la cuenta anterior, actualizar la ficha institucional y
+enviar una nueva invitación. El cambio de ficha por sí solo no revoca ese acceso.
+
+Desde el detalle del club se puede revocar una membresía; la siguiente petición de
+esa cuenta pierde acceso a ese club, manteniendo sus otras membresías. El
+administrador inicial puede revocar a otros administradores desde su panel; no puede
+revocarse a sí mismo. Las operaciones se auditan sin guardar enlaces ni contraseñas.
+
+Para recuperar una contraseña, un administrador verifica primero la identidad y el
+número de WhatsApp de la persona y genera un enlace desde su ficha. Solo el
+administrador inicial puede generar enlaces para otras cuentas administrativas.
+El enlace vence en una hora y se usa una sola vez; cambiar la contraseña cierra las
+sesiones y conserva el MFA. Si se pierden el MFA y sus códigos de recuperación, o
+el administrador inicial pierde su acceso, todavía no existe un procedimiento de
+recuperación de emergencia: hay que acordarlo antes de un piloto. No compartir
+estos enlaces en grupos ni registrar sus contenidos en sistemas de terceros.
 
 ### Gestión de clubes
 
@@ -190,13 +223,13 @@ acción, fecha y valores anteriores/nuevos del club; no contraseñas ni secretos
 La migración `0003_fixed_overlord.sql` agrega auditoría, nombre corto, fecha de
 actualización y versión sin borrar clubes existentes. La fecha de actualización
 de un club previo se presenta como su fecha de creación hasta la primera edición.
-La consulta administrativa de auditoría está disponible; las invitaciones quedan
-para otra entrega.
+La consulta administrativa de auditoría está disponible.
 
 Las solicitudes para asignar un representante se reciben sin revelar si existe
 una cuenta para el correo indicado. Al aplicar la segunda aprobación, se comprueba
-que la cuenta esté activa y el correo verificado; si no, la solicitud sigue
-pendiente y la aprobación falla. Los representantes del club no reciben el correo
+que la cuenta esté activa y que su correo esté verificado o haya aceptado una
+invitación de representante; si no, la solicitud sigue pendiente y la aprobación falla.
+Los representantes del club no reciben el correo
 ni la identidad de la cuenta propuesta en el listado de solicitudes. La nueva
 auditoría de cambios aplicados guarda identificadores y tipo, no el contenido
 personal completo; los eventos anteriores a esta modificación se conservan.

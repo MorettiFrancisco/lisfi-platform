@@ -64,6 +64,34 @@
       "when": 1793320662027,
       "tag": "0008_rapid_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793321689208,
+      "tag": "0009_abandoned_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793321700395,
+      "tag": "0010_verify_whatsapp_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1793321916817,
+      "tag": "0011_loud_carmella_unuscione",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793322288254,
+      "tag": "0012_absent_shaman",
+      "breakpoints": true
     }
   ]
 }

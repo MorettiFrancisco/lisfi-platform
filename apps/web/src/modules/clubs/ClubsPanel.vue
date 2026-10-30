@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import ChangeRequests from './ChangeRequests.vue';
+import RepresentativeInvitationPanel from './RepresentativeInvitationPanel.vue';
+import RecoveryLinkButton from '../auth/RecoveryLinkButton.vue';
 import {
   clubSchema,
   clubDetailSchema,
@@ -10,7 +12,10 @@ import {
   type ClubDetail,
 } from '@lisfi/shared';
 
-const props = defineProps<{ isLeagueAdmin: boolean }>();
+const props = defineProps<{
+  isLeagueAdmin: boolean;
+  presidentClubIds: string[];
+}>();
 const emit = defineEmits<{
   expired: [];
   recheck: [];
@@ -148,6 +153,29 @@ function edit() {
   error.value = '';
   notice.value = '';
   confirmStatus.value = false;
+}
+async function revokeRepresentative(membershipId: string, personName: string) {
+  if (
+    !selected.value ||
+    saving.value ||
+    !window.confirm(`¿Revocar el acceso de ${personName} a este club?`)
+  )
+    return;
+  const clubId = selected.value.id;
+  saving.value = true;
+  error.value = '';
+  try {
+    await request(
+      `/api/clubs/${encodeURIComponent(clubId)}/representatives/${encodeURIComponent(membershipId)}`,
+      'DELETE',
+    );
+    await openClub(clubId);
+    notice.value = 'Acceso revocado.';
+  } catch (cause) {
+    report(cause);
+  } finally {
+    saving.value = false;
+  }
 }
 async function save(changeStatus = false) {
   if (saving.value) return;
@@ -423,6 +451,20 @@ onMounted(() => load());
           <ul v-if="selected.representatives.length">
             <li v-for="person in selected.representatives" :key="person.id">
               {{ person.name }}
+              <RecoveryLinkButton
+                v-if="isLeagueAdmin"
+                :user-id="person.id"
+                :name="person.name"
+              />
+              <button
+                v-if="isLeagueAdmin && person.membershipId"
+                type="button"
+                class="secondary"
+                :disabled="saving"
+                @click="revokeRepresentative(person.membershipId, person.name)"
+              >
+                Revocar acceso
+              </button>
             </li>
           </ul>
           <p v-else>Sin representantes asignados</p>
@@ -450,7 +492,20 @@ onMounted(() => load());
         v-if="selected.status === 'ACTIVE'"
         :club-id="selected.id"
         :is-league-admin="isLeagueAdmin"
+        :is-club-president="presidentClubIds.includes(selected.id)"
         @changed="openClub(selected.id)"
+      />
+      <RepresentativeInvitationPanel
+        v-if="isLeagueAdmin && selected.status === 'ACTIVE'"
+        :club-id="selected.id"
+        kind="PRESIDENT"
+      />
+      <RepresentativeInvitationPanel
+        v-if="
+          presidentClubIds.includes(selected.id) && selected.status === 'ACTIVE'
+        "
+        :club-id="selected.id"
+        kind="REPRESENTATIVE"
       />
       <div v-if="isLeagueAdmin" class="button-row">
         <button :disabled="saving || loading" @click="edit">Editar club</button

@@ -50,7 +50,9 @@ export type Club = z.infer<typeof clubSchema>;
 export const clubPersonSchema = z.object({ id: z.string(), name: z.string() });
 export const clubStructureSchema = z.object({
   president: clubPersonSchema.nullable(),
-  representatives: z.array(clubPersonSchema),
+  representatives: z.array(
+    clubPersonSchema.extend({ membershipId: z.string().optional() }),
+  ),
   technicalDirectors: z.array(clubPersonSchema),
   players: z.array(clubPersonSchema),
 });

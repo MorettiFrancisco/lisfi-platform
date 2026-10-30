@@ -25,6 +25,14 @@ const actions: Record<string, string> = {
   SEASON_CLOSED: 'Temporada cerrada',
   ADMIN_INVITED: 'Invitación administrativa creada',
   ADMIN_GRANTED: 'Administrador incorporado',
+  MEMBERSHIP_REVOKED: 'Acceso de representante revocado',
+  ADMIN_REVOKED: 'Rol administrativo revocado',
+  RECOVERY_LINK_CREATED: 'Enlace de recuperación creado',
+  PASSWORD_RECOVERED: 'Contraseña recuperada',
+  REPRESENTATIVE_INVITED: 'Invitación de representante creada',
+  PRESIDENT_INVITED: 'Invitación de presidente creada',
+  PRESIDENT_INVITATION_ACCEPTED: 'Invitación de presidente aceptada',
+  REPRESENTATIVE_INVITATION_ACCEPTED: 'Invitación de representante aceptada',
 };
 const types: Record<string, string> = {
   CLUB: 'Club',

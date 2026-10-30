@@ -6,6 +6,8 @@ import { createAuth } from './modules/auth/auth';
 import { protectedRoutes } from './modules/auth/routes';
 import { bootstrapRoutes } from './modules/auth/bootstrap';
 import { adminInvitationAcceptanceRoutes } from './modules/auth/invitations';
+import { representativeInvitationAcceptanceRoutes } from './modules/auth/representative-invitations';
+import { recoveryAcceptanceRoutes } from './modules/auth/recovery';
 
 const app = new Hono<{ Bindings: Bindings }>();
 app.use('*', secureHeaders());
@@ -45,6 +47,8 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
 });
 app.route('/api', bootstrapRoutes);
 app.route('/api', adminInvitationAcceptanceRoutes);
+app.route('/api', recoveryAcceptanceRoutes);
+app.route('/api', representativeInvitationAcceptanceRoutes);
 app.route('/api', protectedRoutes);
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 app.onError((_error, c) => c.json({ error: 'Internal server error' }, 500));

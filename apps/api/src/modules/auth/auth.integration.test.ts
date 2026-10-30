@@ -157,7 +157,10 @@ beforeEach(async () => {
     'club_officials',
     'audit_logs',
     'admin_invitations',
+    'representative_invitations',
+    'recovery_links',
     'initial_admin_bootstrap',
+    'club_president_authorities',
     'club_memberships',
     'global_role_assignments',
     'seasons',
@@ -831,6 +834,147 @@ describe('second administrator invitations', () => {
     ).toBe(0);
   }, 30000);
 
+  it('recovers a representative account via a one-use link and invalidates previous sessions', async () => {
+    const ownerCookie = await owner();
+    await seedUser('representative');
+    await login('representative');
+    const previousSession = cookie;
+    expect((await request('/api/me')).status).toBe(200);
+    expect(
+      (await request('/api/recovery-links', { userId: 'owner' })).status,
+    ).toBe(403);
+    cookie = ownerCookie;
+    const response = await request('/api/recovery-links', {
+      userId: 'representative',
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const { token } = (await response.json()) as { token: string };
+    expect(
+      await env.DB.prepare('SELECT token_hash FROM recovery_links').first(
+        'token_hash',
+      ),
+    ).not.toBe(token);
+    const newPassword = randomBytes(24).toString('hex');
+    cookie = '';
+    expect(
+      (
+        await request(
+          '/api/recovery-links/accept',
+          { token, password: newPassword },
+          { origin: 'https://bad.invalid' },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request('/api/recovery-links/accept', {
+          token,
+          password: newPassword,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request('/api/recovery-links/accept', {
+          token,
+          password: newPassword,
+        })
+      ).status,
+    ).toBe(400);
+    cookie = previousSession;
+    expect((await request('/api/me')).status).toBe(401);
+    cookie = '';
+    expect(
+      (
+        await request('/api/auth/sign-in/email', {
+          email: 'representative@example.invalid',
+          password,
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await request(
+          '/api/auth/sign-in/email',
+          {
+            email: 'representative@example.invalid',
+            password: newPassword,
+          },
+          { 'cf-connecting-ip': '192.0.2.249' },
+        )
+      ).status,
+    ).toBe(200);
+    const audit = await env.DB.prepare(
+      "SELECT metadata_json FROM audit_logs WHERE action='PASSWORD_RECOVERED'",
+    ).first<string>('metadata_json');
+    expect(audit).toBeTruthy();
+    expect(audit).not.toContain(token);
+    expect(audit).not.toContain(newPassword);
+  }, 30000);
+
+  it('allows only the initial administrator to revoke other administrators without revoking the owner', async () => {
+    const ownerCookie = await owner();
+    await seedUser('other-admin', true);
+    await login('other-admin');
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    saveCookies(verified);
+    const otherCookie = cookie;
+    expect((await request('/api/administrators')).status).toBe(403);
+    expect(
+      (await request('/api/administrators/owner', undefined, {}, 'DELETE'))
+        .status,
+    ).toBe(403);
+    cookie = ownerCookie;
+    expect(
+      (await request('/api/administrators/owner', undefined, {}, 'DELETE'))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          '/api/administrators/other-admin',
+          undefined,
+          { origin: 'https://bad.invalid' },
+          'DELETE',
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          '/api/administrators/other-admin',
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          '/api/administrators/other-admin',
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(404);
+    cookie = otherCookie;
+    expect((await request('/api/administrators')).status).toBe(403);
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      roles: [],
+    });
+    expect(
+      await env.DB.prepare(
+        "SELECT count(*) AS n FROM audit_logs WHERE action='ADMIN_REVOKED'",
+      ).first('n'),
+    ).toBe(1);
+  }, 30000);
+
   it('permits one concurrent acceptance and rolls back on an audit failure', async () => {
     const ownerCookie = await owner();
     const first = await invite();
@@ -938,6 +1082,350 @@ describe('club management and atomic audit', () => {
       .run();
     return { id, version: 1 };
   }
+  it('invites a representative without falsely verifying email and grants access only after two approvals', async () => {
+    await administrator();
+    const firstCookie = cookie;
+    const club = await createClub();
+    const presidentInvite = await request('/api/representative-invitations', {
+      email: 'president@example.invalid',
+      clubId: club.id,
+      kind: 'PRESIDENT',
+    });
+    expect(presidentInvite.status).toBe(201);
+    const presidentToken = ((await presidentInvite.json()) as { token: string })
+      .token;
+    cookie = '';
+    expect(
+      (
+        await request('/api/representative-invitations/accept', {
+          token: presidentToken,
+          name: 'President',
+          email: 'president@example.invalid',
+          password,
+        })
+      ).status,
+    ).toBe(201);
+    const presidentLogin = await request(
+      '/api/auth/sign-in/email',
+      { email: 'president@example.invalid', password },
+      { 'cf-connecting-ip': '192.0.2.248' },
+    );
+    expect(presidentLogin.status).toBe(200);
+    saveCookies(presidentLogin);
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      presidentClubIds: [club.id],
+    });
+    const presidentCookie = cookie;
+    expect(
+      (
+        await request('/api/representative-invitations', {
+          email: 'other@example.invalid',
+          clubId: 'other-club',
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await request('/api/representative-invitations', {
+          email: 'other@example.invalid',
+          clubId: club.id,
+          kind: 'PRESIDENT',
+        })
+      ).status,
+    ).toBe(403);
+    const issued = await request('/api/representative-invitations', {
+      email: 'new-rep@example.invalid',
+      clubId: club.id,
+    });
+    expect(issued.status).toBe(201);
+    const { token } = (await issued.json()) as { token: string };
+    expect(
+      await env.DB.prepare(
+        'SELECT token_hash FROM representative_invitations',
+      ).first('token_hash'),
+    ).not.toBe(token);
+    cookie = '';
+    const details = {
+      token,
+      name: 'Representante de prueba',
+      email: 'new-rep@example.invalid',
+      password,
+    };
+    expect(
+      (
+        await request('/api/representative-invitations/accept', {
+          ...details,
+          email: 'wrong@example.invalid',
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await request('/api/representative-invitations/accept', details)).status,
+    ).toBe(201);
+    expect(
+      (await request('/api/representative-invitations/accept', details)).status,
+    ).toBe(400);
+    expect(
+      await env.DB.prepare('SELECT emailVerified FROM "user" WHERE email=?')
+        .bind(details.email)
+        .first('emailVerified'),
+    ).toBe(0);
+    cookie = '';
+    const loginResult = await request(
+      '/api/auth/sign-in/email',
+      {
+        email: details.email,
+        password,
+      },
+      { 'cf-connecting-ip': '192.0.2.247' },
+    );
+    expect(loginResult.status).toBe(200);
+    saveCookies(loginResult);
+    const repCookie = cookie;
+    expect((await request(`/api/clubs/${club.id}`)).status).toBe(404);
+    const change = await env.DB.prepare(
+      "SELECT id FROM change_requests WHERE kind='REPRESENTATIVE' AND club_id=?",
+    )
+      .bind(club.id)
+      .first<{ id: string }>();
+    cookie = firstCookie;
+    expect(
+      (await request(`/api/changes/${change!.id}/approve`, {})).status,
+    ).toBe(200);
+    cookie = await secondAdministrator();
+    expect(
+      (await request(`/api/changes/${change!.id}/approve`, {})).status,
+    ).toBe(200);
+    cookie = repCookie;
+    expect((await request(`/api/clubs/${club.id}`)).status).toBe(200);
+    const me = await (await request('/api/me')).json();
+    expect(me).toMatchObject({ clubs: [{ id: club.id }] });
+    expect(
+      (
+        await request('/api/representative-invitations', {
+          email: 'forbidden@example.invalid',
+          clubId: club.id,
+        })
+      ).status,
+    ).toBe(404);
+    cookie = presidentCookie;
+    const pending = await request('/api/representative-invitations', {
+      email: 'pending@example.invalid',
+      clubId: club.id,
+    });
+    expect(pending.status).toBe(201);
+    const pendingToken = ((await pending.json()) as { token: string }).token;
+    const presidentMembership = await env.DB.prepare(
+      'SELECT membership_id FROM club_president_authorities WHERE club_id=?',
+    )
+      .bind(club.id)
+      .first<string>('membership_id');
+    cookie = firstCookie;
+    expect(
+      (
+        await request(
+          `/api/clubs/${club.id}/representatives/${presidentMembership}`,
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(200);
+    cookie = presidentCookie;
+    expect(
+      (
+        await request('/api/representative-invitations', {
+          email: 'blocked@example.invalid',
+          clubId: club.id,
+        })
+      ).status,
+    ).toBe(404);
+    cookie = '';
+    expect(
+      (
+        await request('/api/representative-invitations/accept', {
+          token: pendingToken,
+          name: 'Pending',
+          email: 'pending@example.invalid',
+          password,
+        })
+      ).status,
+    ).toBe(400);
+  }, 45000);
+
+  it('rejects expired invitations and invitations from administrators who lose authority', async () => {
+    await administrator();
+    const adminCookie = cookie;
+    const club = await createClub();
+    const first = await request('/api/representative-invitations', {
+      email: 'expired@example.invalid',
+      clubId: club.id,
+      kind: 'PRESIDENT',
+    });
+    const { token } = (await first.json()) as { token: string };
+    await env.DB.prepare(
+      "UPDATE representative_invitations SET expires_at='2000-01-01T00:00:00.000Z'",
+    ).run();
+    cookie = '';
+    expect(
+      (
+        await request('/api/representative-invitations/accept', {
+          token,
+          name: 'Test',
+          email: 'expired@example.invalid',
+          password,
+        })
+      ).status,
+    ).toBe(400);
+    cookie = adminCookie;
+    const next = await request('/api/representative-invitations', {
+      email: 'revoked@example.invalid',
+      clubId: club.id,
+      kind: 'PRESIDENT',
+    });
+    const revokedToken = ((await next.json()) as { token: string }).token;
+    await createDb(env.DB)
+      .update(globalRoleAssignments)
+      .set({ revokedAt: new Date().toISOString() })
+      .where(eq(globalRoleAssignments.userId, 'club-admin'));
+    cookie = '';
+    expect(
+      (
+        await request('/api/representative-invitations/accept', {
+          token: revokedToken,
+          name: 'Test',
+          email: 'revoked@example.invalid',
+          password,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      await env.DB.prepare('SELECT count(*) AS n FROM "user" WHERE email=?')
+        .bind('revoked@example.invalid')
+        .first('n'),
+    ).toBe(0);
+  }, 30000);
+  it('revokes only the selected club membership atomically and invalidates the existing session', async () => {
+    await administrator();
+    const adminCookie = cookie;
+    const clubA = await createClub();
+    const clubB = await createDb(env.DB)
+      .insert(clubs)
+      .values({
+        id: 'club-b',
+        name: 'Club B',
+        slug: 'club-b',
+        createdAt: new Date().toISOString(),
+      })
+      .returning()
+      .get();
+    await seedUser('representative');
+    const now = new Date().toISOString();
+    await createDb(env.DB)
+      .insert(clubMemberships)
+      .values([
+        {
+          id: 'member-a',
+          userId: 'representative',
+          clubId: clubA.id,
+          createdAt: now,
+        },
+        {
+          id: 'member-b',
+          userId: 'representative',
+          clubId: clubB.id,
+          createdAt: now,
+        },
+      ]);
+    await login('representative');
+    const repCookie = cookie;
+    expect((await request(`/api/clubs/${clubA.id}`)).status).toBe(200);
+    expect(
+      (
+        await request(
+          `/api/clubs/${clubA.id}/representatives/member-a`,
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(403);
+    cookie = adminCookie;
+    expect(
+      (
+        await request(
+          `/api/clubs/${clubA.id}/representatives/member-a`,
+          undefined,
+          { origin: 'https://untrusted.invalid' },
+          'DELETE',
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          `/api/clubs/${clubB.id}/representatives/member-a`,
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(404);
+    await env.DB.prepare(
+      "CREATE TRIGGER fail_revoke_audit BEFORE INSERT ON audit_logs WHEN NEW.action='MEMBERSHIP_REVOKED' BEGIN SELECT RAISE(ABORT,'audit failure'); END",
+    ).run();
+    try {
+      expect(
+        (
+          await request(
+            `/api/clubs/${clubA.id}/representatives/member-a`,
+            undefined,
+            {},
+            'DELETE',
+          )
+        ).status,
+      ).toBe(500);
+      expect(
+        await env.DB.prepare(
+          'SELECT revoked_at FROM club_memberships WHERE id=?',
+        )
+          .bind('member-a')
+          .first('revoked_at'),
+      ).toBeNull();
+    } finally {
+      await env.DB.prepare('DROP TRIGGER fail_revoke_audit').run();
+    }
+    expect(
+      (
+        await request(
+          `/api/clubs/${clubA.id}/representatives/member-a`,
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          `/api/clubs/${clubA.id}/representatives/member-a`,
+          undefined,
+          {},
+          'DELETE',
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      await env.DB.prepare(
+        "SELECT count(*) AS n FROM audit_logs WHERE action='MEMBERSHIP_REVOKED' AND resource_id=?",
+      )
+        .bind(clubA.id)
+        .first('n'),
+    ).toBe(1);
+    cookie = repCookie;
+    expect((await request(`/api/clubs/${clubA.id}`)).status).toBe(404);
+    expect((await request(`/api/clubs/${clubB.id}`)).status).toBe(200);
+  }, 30000);
   it('requires two distinct active league administrators for club and all person assignments', async () => {
     await administrator();
     const firstCookie = cookie;
@@ -1065,6 +1553,17 @@ describe('club management and atomic audit', () => {
       clubId: club.id,
       createdAt: new Date().toISOString(),
     });
+    await env.DB.prepare(
+      `INSERT INTO club_president_authorities (id,membership_id,club_id,user_id,created_at) VALUES (?,?,?,?,?)`,
+    )
+      .bind(
+        'requester-president',
+        'requester-membership',
+        club.id,
+        'requesting-representative',
+        new Date().toISOString(),
+      )
+      .run();
     await login('requesting-representative');
 
     const existing = await request('/api/changes', {

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
-const props = defineProps<{ clubId?: string; isLeagueAdmin: boolean }>();
+const props = defineProps<{
+  clubId?: string;
+  isLeagueAdmin: boolean;
+  isClubPresident?: boolean;
+}>();
 const emit = defineEmits<{ changed: [] }>();
 type Kind = 'PRESIDENT' | 'REPRESENTATIVE' | 'TECHNICAL_DIRECTOR' | 'PLAYER';
 type Item = {
@@ -171,7 +175,9 @@ watch(
       <label for="change-kind">¿Qué querés solicitar?</label>
       <select id="change-kind" v-model="kind" :disabled="busy">
         <option value="PRESIDENT">Presidente</option>
-        <option value="REPRESENTATIVE">Representante</option>
+        <option v-if="isLeagueAdmin || isClubPresident" value="REPRESENTATIVE">
+          Representante
+        </option>
         <option value="TECHNICAL_DIRECTOR">Director técnico</option>
         <option value="PLAYER">Jugador</option>
       </select>

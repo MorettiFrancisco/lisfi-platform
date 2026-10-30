@@ -16,35 +16,25 @@ Etapa 1 en entregas pequeñas; no se realizó ningún despliegue.
 - Pruebas de integración con D1 emulado y pruebas de navegador. La disponibilidad
   de características no implica que el circuito completo de alta esté operativo.
 
-## Bloqueos para completar el circuito de clubes
+## Estado de invitaciones y acceso
 
-El bootstrap crea un solo administrador. La siguiente entrega agrega una invitación
-temporal para que el administrador inicial con MFA incorpore a otro administrador,
-que debe configurar MFA antes de aprobar. El flujo de invitación de representantes,
-verificación de correo y revocación de membresías sigue pendiente. El sistema exige
-una cuenta activa y con correo verificado para aplicar una asignación de representante.
+Se incorporaron invitaciones de administradores, presidentes y representantes, revocación de
+membresías y de administradores por el responsable inicial, y recuperación de
+contraseñas mediante enlaces temporales para compartir por WhatsApp. La identidad
+y el número deben verificarse fuera de la aplicación; el correo no se verifica con
+este canal. La liga invita al presidente, que invita a los representantes de su
+club. Las membresías de representantes conservan la doble aprobación.
 
 ## Próximas entregas propuestas
 
-1. **Seguridad y calidad de la base.** Corregir los hallazgos de privacidad de la
-   auditoría actual, mantener las verificaciones de doble aprobación y el aislamiento
-   entre clubes, y dejar `pnpm check` reproducible en Windows y CI. Verificar las
-   migraciones y sus restricciones desde una base vacía y desde una base existente.
-2. **Administradores y recuperación.** La invitación del segundo administrador ya
-   tiene un flujo auditado con cuentas personales y MFA. Falta acordar quién más
-   puede otorgar o revocar privilegios y cómo recuperar acceso; evitar que una
-   revocación deje a LISFI sin responsables habilitados.
-3. **Invitaciones y representantes.** Elegir canal de correo verificado y proveedor;
-   implementar invitaciones de un solo uso y con vencimiento, aceptación, reenvío
-   limitado, asignación y revocación lógica auditadas. Probar un club con dos
-   representantes, uno asociado a dos clubes y acceso denegado a un club ajeno.
-4. **Recuperación y operación.** Agregar recuperación sin revelar si una cuenta
-   existe, control de abuso, alertas, límites presupuestarios y un procedimiento de
-   backup cifrado con una restauración de prueba documentada. Decidir el enrutamiento
-   Pages/Worker y separar entornos antes de preparar cualquier piloto.
-5. **Cierre funcional.** Confirmar nombres y campos oficiales de clubes y reglas
-   de temporadas simultáneas; completar controles de unicidad y los flujos pendientes.
-   Ejecutar pruebas de aceptación completas en escritorio y móvil con datos ficticios.
+1. Definir y ensayar la recuperación de emergencia del administrador inicial y la
+   pérdida de MFA, con responsables designados y controles contra escalación.
+2. Validar con LISFI la verificación de identidad y número para WhatsApp, y decidir
+   si se requerirá verificación del correo.
+3. Preparar backups cifrados, restauración probada, retención de auditoría, alertas,
+   límites de gasto y separación de entornos antes de un piloto.
+4. Confirmar las reglas funcionales pendientes y ejecutar aceptación integral en
+   escritorio y móvil con datos ficticios.
 
 ## Decisiones pendientes para LISFI
 
@@ -52,7 +42,7 @@ una cuenta activa y con correo verificado para aplicar una asignación de repres
   si existirá un rol elevado separado del administrador habitual.
 - Confirmar si los dos aprobadores deben ser distintos del solicitante y la política
   cuando se revoca a un aprobador o al solicitante mientras una solicitud está pendiente.
-- Definir canal y costo de invitaciones y recuperación, así como retención de auditoría.
+- Definir verificación operativa de identidad y número de WhatsApp, y retención de auditoría.
 - Definir el contexto competitivo de temporadas y cuándo pueden coexistir activas.
 - Acordar nombres operativos de clubes, normalización y unicidad.
 - Confirmar si la nómina nominal de jugadores actualmente presente en el módulo de

@@ -3,11 +3,15 @@ import { ref } from 'vue';
 import { adminInvitationAcceptSchema } from '@lisfi/shared';
 import { postAuth } from './api';
 const emit = defineEmits<{ created: [email: string]; cancel: [] }>();
+const props = withDefaults(
+  defineProps<{ kind?: 'admin' | 'representative'; initialToken?: string }>(),
+  { kind: 'admin', initialToken: '' },
+);
 const name = ref('');
 const email = ref('');
 const password = ref('');
 const confirmation = ref('');
-const token = ref('');
+const token = ref(props.initialToken);
 const busy = ref(false);
 const error = ref('');
 async function accept() {
@@ -26,7 +30,12 @@ async function accept() {
   busy.value = true;
   error.value = '';
   try {
-    await postAuth('/api/admin-invitations/accept', parsed.data);
+    await postAuth(
+      props.kind === 'admin'
+        ? '/api/admin-invitations/accept'
+        : '/api/representative-invitations/accept',
+      parsed.data,
+    );
     emit('created', parsed.data.email);
   } catch {
     error.value =
@@ -42,8 +51,12 @@ async function accept() {
 <template>
   <div>
     <p>
-      Ingresá el correo y la clave que recibiste. Después deberás configurar la
-      autenticación de dos pasos.
+      Ingresá el correo y la clave que recibiste.
+      {{
+        kind === 'admin'
+          ? 'Después deberás configurar la autenticación de dos pasos.'
+          : 'Si sos representante, el acceso requiere dos aprobaciones de la liga.'
+      }}
     </p>
     <p v-if="error" role="alert">{{ error }}</p>
     <form @submit.prevent="accept">

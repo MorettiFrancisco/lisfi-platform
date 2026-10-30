@@ -7,6 +7,7 @@ const token = ref('');
 const expiresAt = ref('');
 const busy = ref(false);
 const error = ref('');
+const origin = window.location.origin;
 
 async function create() {
   const parsed = adminInvitationRequestSchema.safeParse({ email: email.value });
@@ -47,6 +48,13 @@ async function create() {
         type="email"
         required
         :disabled="busy"
+      />
+      <label for="invitation-link">Enlace para compartir por WhatsApp</label>
+      <input
+        id="invitation-link"
+        :value="`${origin}/#admin-invitation=${token}`"
+        readonly
+        @focus="($event.target as HTMLInputElement).select()"
       />
       <button :disabled="busy">Generar invitación</button>
     </form>
