@@ -50,10 +50,11 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
   externas. Una prueba de navegador con Worker y D1 temporales verificó `/api/me`
   desde Swagger con una sesión administrativa y MFA reales.
 - Una prueba de navegador con Worker y D1 temporales completó el alta y MFA de dos
-  administradores, la invitación de un presidente, la invitación de un representante
-  y las dos aprobaciones. Verificó que no había acceso antes de la segunda aprobación.
+  administradores, la invitación de un presidente y de dos representantes
+  independientes, con dos aprobaciones por representante. Verificó que no había
+  acceso antes de la segunda aprobación.
   El caso de un representante en varios clubes también se verifica en integración;
-  aún falta probar en navegador dos representantes y varios clubes en un mismo flujo.
+  aún falta probar en navegador varios clubes en un mismo flujo.
 - Las migraciones hasta `0014` se aplicaron a D1 **local**; no se aplicaron en una
   base remota. No hay datos personales reales de prueba ni secretos versionados.
 - Para retomar: instalar Node y pnpm según [README](../README.md), ejecutar
@@ -97,9 +98,8 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 1. **Cierre del circuito de presidencia:** definir qué hacer con solicitudes
    pendientes del presidente anterior y agregar las pruebas correspondientes.
    Mantener iteraciones pequeñas y verificables.
-2. **Aceptación del flujo de clubes:** probar con datos ficticios la invitación de
-   presidente, dos representantes, dos aprobaciones, un representante en varios
-   clubes y acceso denegado a uno ajeno; cubrir el flujo completo en navegador.
+2. **Aceptación del flujo de clubes:** ampliar el recorrido de navegador con datos
+   ficticios para un representante en varios clubes y acceso denegado a uno ajeno.
    Acordar con LISFI el mecanismo de avisos y el manejo de cuentas existentes.
 3. **Continuidad y seguridad:** diseñar y probar recuperación de emergencia y MFA,
    backup y restauración, límites de abuso, política de auditoría y procedimiento

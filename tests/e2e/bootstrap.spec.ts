@@ -288,6 +288,64 @@ test('real Worker: administrators, MFA, club invitations and approvals', async (
   await expect(delegate.locator('.club-list')).toContainText(
     'Estrella del Sur',
   );
+  // A second independent representative follows the same approval workflow.
+  await representativePanel
+    .getByLabel('Correo de la persona invitada')
+    .fill('delegate-two@example.invalid');
+  await representativePanel
+    .getByRole('button', { name: 'Generar enlace' })
+    .click();
+  const secondDelegateLink = await representativePanel
+    .getByLabel('Enlace para compartir por WhatsApp')
+    .inputValue();
+  const secondDelegateContext = await page
+    .context()
+    .browser()!
+    .newContext({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.45' } });
+  const secondDelegate = await secondDelegateContext.newPage();
+  const secondDelegatePassword = randomBytes(24).toString('hex');
+  await secondDelegate.goto(secondDelegateLink);
+  await secondDelegate
+    .getByLabel('Nombre completo')
+    .fill('Segundo representante');
+  await secondDelegate
+    .getByLabel('Correo electrónico')
+    .fill('delegate-two@example.invalid');
+  await secondDelegate
+    .getByLabel('Contraseña nueva')
+    .fill(secondDelegatePassword);
+  await secondDelegate
+    .getByLabel('Repetí la contraseña')
+    .fill(secondDelegatePassword);
+  await secondDelegate.getByRole('button', { name: 'Crear cuenta' }).click();
+  await secondDelegate
+    .getByLabel('Contraseña', { exact: true })
+    .fill(secondDelegatePassword);
+  await secondDelegate
+    .getByRole('button', { name: 'Ingresar', exact: true })
+    .click();
+  await expect(
+    secondDelegate.getByText('No tenés clubes disponibles', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Actualizar solicitudes' }).click();
+  const pendingFirst = page
+    .locator('.request-list li')
+    .filter({ hasText: 'delegate-two@example.invalid' });
+  await pendingFirst
+    .getByRole('button', { name: 'Aprobar', exact: true })
+    .click();
+  await second.getByRole('button', { name: 'Actualizar solicitudes' }).click();
+  const pendingSecond = second
+    .locator('.request-list li')
+    .filter({ hasText: 'delegate-two@example.invalid' });
+  await pendingSecond
+    .getByRole('button', { name: 'Aprobar', exact: true })
+    .click();
+  await secondDelegate.reload();
+  await expect(secondDelegate.locator('.club-list')).toContainText(
+    'Estrella del Sur',
+  );
+  await secondDelegateContext.close();
   await delegateContext.close();
   await presidentContext.close();
   await secondContext.close();
