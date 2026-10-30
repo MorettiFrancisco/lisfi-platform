@@ -42,12 +42,17 @@ function administratorCreated(accountEmail: string) {
   notice.value =
     'Cuenta creada. Ingresá con tu contraseña para configurar MFA.';
 }
-function representativeCreated(accountEmail: string) {
+function representativeCreated(
+  accountEmail: string,
+  kind?: 'PRESIDENT' | 'REPRESENTATIVE',
+) {
   email.value = accountEmail;
   invitationToken.value = '';
   backToLogin();
   notice.value =
-    'Cuenta creada. El acceso al club requiere dos aprobaciones de la liga.';
+    kind === 'PRESIDENT'
+      ? 'Cuenta creada. Ingresá para administrar los representantes de tu club.'
+      : 'Cuenta creada. El acceso al club requiere dos aprobaciones de la liga.';
 }
 function passwordRecovered() {
   invitationToken.value = '';
@@ -71,12 +76,16 @@ async function useExistingInvitation() {
   }
 }
 
-async function existingInvitationAccepted() {
+async function existingInvitationAccepted(
+  kind: 'PRESIDENT' | 'REPRESENTATIVE',
+) {
   invitationToken.value = '';
   invitationExisting.value = false;
   await restore();
   notice.value =
-    'Solicitud enviada. El acceso al club requiere dos aprobaciones de la liga.';
+    kind === 'PRESIDENT'
+      ? 'Invitación aceptada. Ya podés administrar los representantes de tu club.'
+      : 'Solicitud enviada. El acceso al club requiere dos aprobaciones de la liga.';
 }
 
 async function switchInvitationAccount() {

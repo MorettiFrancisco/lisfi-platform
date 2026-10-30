@@ -3,10 +3,10 @@ import { ref } from 'vue';
 import { adminInvitationAcceptSchema } from '@lisfi/shared';
 import { postAuth } from './api';
 const emit = defineEmits<{
-  created: [email: string];
+  created: [email: string, kind?: 'PRESIDENT' | 'REPRESENTATIVE'];
   cancel: [];
   existing: [];
-  acceptedExisting: [];
+  acceptedExisting: [kind: 'PRESIDENT' | 'REPRESENTATIVE'];
   switchAccount: [];
 }>();
 const props = withDefaults(
@@ -30,11 +30,14 @@ async function acceptExisting() {
   busy.value = true;
   error.value = '';
   try {
-    await postAuth('/api/representative-invitations/accept-existing', {
-      token: token.value.trim(),
-    });
+    const result = (await postAuth(
+      '/api/representative-invitations/accept-existing',
+      {
+        token: token.value.trim(),
+      },
+    )) as { kind: 'PRESIDENT' | 'REPRESENTATIVE' };
     token.value = '';
-    emit('acceptedExisting');
+    emit('acceptedExisting', result.kind);
   } catch {
     error.value =
       'No se pudo aceptar el enlace. Comprobá que ingresaste con la cuenta invitada o pedí un enlace nuevo.';
@@ -58,13 +61,19 @@ async function accept() {
   busy.value = true;
   error.value = '';
   try {
-    await postAuth(
+    const result = await postAuth(
       props.kind === 'admin'
         ? '/api/admin-invitations/accept'
         : '/api/representative-invitations/accept',
       parsed.data,
     );
-    emit('created', parsed.data.email);
+    emit(
+      'created',
+      parsed.data.email,
+      props.kind === 'representative'
+        ? (result as { kind: 'PRESIDENT' | 'REPRESENTATIVE' }).kind
+        : undefined,
+    );
   } catch {
     error.value =
       'No se pudo aceptar la invitación. Verificá el correo y la clave o solicitá una nueva invitación.';
@@ -89,9 +98,9 @@ async function accept() {
     <p v-if="error" role="alert">{{ error }}</p>
     <div v-if="kind === 'representative' && existingSession">
       <p>
-        Vas a solicitar acceso con la cuenta de {{ accountName }}. Se requieren
-        dos aprobaciones de la liga. Esta opción es para invitaciones de
-        representante.
+        Vas a aceptar el enlace con la cuenta de {{ accountName }}. Los
+        representantes necesitan dos aprobaciones de la liga; los presidentes
+        quedan habilitados al aceptar la invitación de LISFI.
       </p>
       <button :disabled="busy" @click="acceptExisting">
         Aceptar con mi cuenta

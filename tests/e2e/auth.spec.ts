@@ -53,7 +53,10 @@ test('an existing representative logs in and accepts a club invitation', async (
     '**/api/representative-invitations/accept-existing',
     (route) => {
       expect(route.request().postDataJSON()).toEqual({ token });
-      return route.fulfill({ status: 201, json: { requested: true } });
+      return route.fulfill({
+        status: 201,
+        json: { requested: true, kind: 'REPRESENTATIVE' },
+      });
     },
   );
   await page.goto(`/#representative-invitation=${token}`);
@@ -73,6 +76,35 @@ test('an existing representative logs in and accepts a club invitation', async (
   ).toBeVisible();
   await expect(
     page.getByText('Representante de prueba', { exact: true }),
+  ).toBeVisible();
+});
+
+test('an existing president accepts an invitation with an active session', async ({
+  page,
+}) => {
+  const token = 'c'.repeat(64);
+  await page.route('**/api/me', (route) => route.fulfill({ json: identity }));
+  await page.route(
+    '**/api/representative-invitations/accept-existing',
+    (route) => {
+      expect(route.request().postDataJSON()).toEqual({ token });
+      return route.fulfill({
+        status: 201,
+        json: { requested: false, kind: 'PRESIDENT' },
+      });
+    },
+  );
+  await page.goto(`/#representative-invitation=${token}`);
+  await page.getByRole('button', { name: 'Ya tengo una cuenta' }).click();
+  await expect(
+    page.getByText(
+      'Vas a aceptar el enlace con la cuenta de Representante de prueba.',
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Aceptar con mi cuenta' }).click();
+  await expect(
+    page.getByText('Invitación aceptada.', { exact: false }),
   ).toBeVisible();
 });
 

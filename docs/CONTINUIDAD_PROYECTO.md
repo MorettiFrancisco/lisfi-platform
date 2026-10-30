@@ -1,6 +1,6 @@
 # Continuidad de LISFI Platform
 
-Estado actualizado el 29 de octubre de 2026, después de `58acf43`. El proyecto
+Estado actualizado el 29 de octubre de 2026, después de `5fbaafc`. El proyecto
 está en desarrollo local: la Etapa 1
 todavía no está cerrada ni se autorizó un despliegue a producción.
 
@@ -24,6 +24,10 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
   persona se registra se crea una solicitud y dos administradores deben aprobarla
   para habilitar su acceso. El presidente solo puede generar invitaciones para
   clubes en los que tiene autoridad vigente.
+- Los presidentes y representantes invitados pueden aceptar con una cuenta ya
+  existente; para representantes se mantiene la doble aprobación. Cuando un
+  presidente ya tenía membresía en el club, se reutiliza esa membresía y se revoca
+  al dejar la presidencia. Las membresías en otros clubes se conservan.
 - Enlaces para compartir manualmente por WhatsApp: de un solo uso y con duración
   de una hora. La aplicación no envía mensajes ni verifica automáticamente la
   identidad, el teléfono o la propiedad del correo. La persona que comparte el
@@ -36,7 +40,7 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 ## Verificación y estado local
 
 - En la última ejecución completa `pnpm check` pasó: formato, ESLint, TypeScript,
-  47 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
+  48 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
 - Playwright ejecutó las pruebas existentes en escritorio y móvil: 19 pasaron y
   una prueba de bootstrap se omitió en móvil por configuración. La nueva prueba
   de la pantalla de invitación del presidente pasó en ambos tamaños por separado.
@@ -70,8 +74,9 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
    el registro de bootstrap ni modificar la base manualmente para eludirlo.
 4. **Cuentas existentes:** el representante puede aceptar el enlace con una
    sesión de la cuenta invitada. La incorporación al nuevo club requiere dos
-   aprobaciones y conserva las demás membresías. Falta aceptación integral con
-   LISFI y una experiencia equivalente para presidentes con cuenta previa.
+   aprobaciones y conserva las demás membresías. Los presidentes también pueden
+   aceptar con una cuenta existente; si ya tenían membresía en ese club se reutiliza
+   y se revoca al dejar la presidencia. Falta aceptación integral con LISFI.
 5. **Privacidad y operación:** acordar verificación de identidad y teléfono,
    eventual verificación del correo, retención de auditoría, backups cifrados y
    una restauración ensayada. Las pruebas actuales no sustituyen una aceptación

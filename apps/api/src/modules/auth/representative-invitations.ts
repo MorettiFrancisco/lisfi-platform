@@ -59,32 +59,62 @@ representativeInvitationRoutes.post(
     const changeId = crypto.randomUUID();
     const now = new Date(nowMs).toISOString();
     try {
-      const result = await c.env.DB.batch([
+      const result = await c.env.DB.batch<{
+        kind: 'PRESIDENT' | 'REPRESENTATIVE';
+      }>([
         c.env.DB.prepare(
           `UPDATE representative_invitations SET accepted_at=?,accepted_user_id=?,acceptance_operation_id=?
-        WHERE token_hash=? AND kind='REPRESENTATIVE' AND accepted_at IS NULL AND expires_at>?
-        AND ${activePresident('representative_invitations.invited_by', 'representative_invitations.club_id')}
+        WHERE token_hash=? AND accepted_at IS NULL AND expires_at>?
+        AND (CASE kind WHEN 'PRESIDENT' THEN ${activeAdmin('representative_invitations.invited_by')}
+          WHEN 'REPRESENTATIVE' THEN ${activePresident('representative_invitations.invited_by', 'representative_invitations.club_id')} ELSE 0 END)
         AND EXISTS (SELECT 1 FROM clubs WHERE id=representative_invitations.club_id AND status='ACTIVE')
         AND EXISTS (SELECT 1 FROM "user" u WHERE u.id=? AND u.status='ACTIVE' AND lower(u.email)=lower(representative_invitations.email))
-        AND NOT EXISTS (SELECT 1 FROM club_memberships m WHERE m.user_id=? AND m.club_id=representative_invitations.club_id AND m.role='CLUB_REPRESENTATIVE' AND m.revoked_at IS NULL)`,
+        AND (CASE kind WHEN 'PRESIDENT' THEN NOT EXISTS (SELECT 1 FROM club_president_authorities p WHERE p.club_id=representative_invitations.club_id AND p.revoked_at IS NULL)
+          ELSE NOT EXISTS (SELECT 1 FROM club_memberships m WHERE m.user_id=? AND m.club_id=representative_invitations.club_id AND m.role='CLUB_REPRESENTATIVE' AND m.revoked_at IS NULL) END)
+        RETURNING kind`,
         ).bind(now, actor.id, operation, tokenHash, now, actor.id, actor.id),
+        c.env.DB.prepare(
+          `INSERT INTO club_officials (id,club_id,name,position,created_at)
+          SELECT ?,i.club_id,u.name,'PRESIDENT',? FROM representative_invitations i JOIN "user" u ON u.id=i.accepted_user_id
+          WHERE i.token_hash=? AND i.acceptance_operation_id=? AND i.kind='PRESIDENT'
+          AND NOT EXISTS (SELECT 1 FROM club_officials o WHERE o.club_id=i.club_id AND o.position='PRESIDENT' AND o.ended_at IS NULL)`,
+        ).bind(crypto.randomUUID(), now, tokenHash, operation),
+        c.env.DB.prepare(
+          `INSERT INTO club_memberships (id,user_id,club_id,role,created_at)
+          SELECT ?,i.accepted_user_id,i.club_id,'CLUB_REPRESENTATIVE',? FROM representative_invitations i
+          WHERE i.token_hash=? AND i.acceptance_operation_id=? AND i.kind='PRESIDENT'
+          AND NOT EXISTS (SELECT 1 FROM club_memberships m WHERE m.user_id=i.accepted_user_id AND m.club_id=i.club_id AND m.role='CLUB_REPRESENTATIVE' AND m.revoked_at IS NULL)`,
+        ).bind(crypto.randomUUID(), now, tokenHash, operation),
+        c.env.DB.prepare(
+          `INSERT INTO club_president_authorities (id,membership_id,club_id,user_id,created_at)
+          SELECT ?,m.id,i.club_id,i.accepted_user_id,? FROM representative_invitations i JOIN club_memberships m
+          ON m.user_id=i.accepted_user_id AND m.club_id=i.club_id AND m.role='CLUB_REPRESENTATIVE' AND m.revoked_at IS NULL
+          WHERE i.token_hash=? AND i.acceptance_operation_id=? AND i.kind='PRESIDENT'`,
+        ).bind(crypto.randomUUID(), now, tokenHash, operation),
         c.env.DB.prepare(
           `INSERT INTO change_requests (id,kind,club_id,requester_id,payload_json,status,created_at)
         SELECT ?,'REPRESENTATIVE',club_id,invited_by,json_object('entityId',?,'userId',accepted_user_id,'email',email),'PENDING',?
-        FROM representative_invitations WHERE token_hash=? AND acceptance_operation_id=?`,
+        FROM representative_invitations WHERE token_hash=? AND acceptance_operation_id=? AND kind='REPRESENTATIVE'`,
         ).bind(changeId, crypto.randomUUID(), now, tokenHash, operation),
         c.env.DB.prepare(
           `INSERT INTO audit_logs (id,actor_user_id,action,resource_type,resource_id,created_at,metadata_json)
-        SELECT ?,accepted_user_id,'REPRESENTATIVE_INVITATION_ACCEPTED','CHANGE_REQUEST',?,?,json_object('invitationId',id)
+        SELECT ?,accepted_user_id,CASE kind WHEN 'PRESIDENT' THEN 'PRESIDENT_INVITATION_ACCEPTED' ELSE 'REPRESENTATIVE_INVITATION_ACCEPTED' END,
+        CASE kind WHEN 'PRESIDENT' THEN 'CLUB' ELSE 'CHANGE_REQUEST' END,CASE kind WHEN 'PRESIDENT' THEN club_id ELSE ? END,?,json_object('invitationId',id)
         FROM representative_invitations WHERE token_hash=? AND acceptance_operation_id=?`,
         ).bind(crypto.randomUUID(), changeId, now, tokenHash, operation),
       ]);
       if (result[0]!.meta.changes !== 1)
         return c.json({ error: 'Invalid invitation' }, 400);
+      return c.json(
+        {
+          requested: result[0]!.results[0]!.kind === 'REPRESENTATIVE',
+          kind: result[0]!.results[0]!.kind,
+        },
+        201,
+      );
     } catch {
       return c.json({ error: 'Invalid invitation' }, 400);
     }
-    return c.json({ requested: true }, 201);
   },
 );
 representativeInvitationRoutes.post(
@@ -177,13 +207,16 @@ representativeInvitationAcceptanceRoutes.post(
     const membershipId = crypto.randomUUID();
     const now = new Date(nowMs).toISOString();
     try {
-      const result = await c.env.DB.batch([
+      const result = await c.env.DB.batch<{
+        kind: 'PRESIDENT' | 'REPRESENTATIVE';
+      }>([
         c.env.DB.prepare(
           `UPDATE representative_invitations SET accepted_at=?,accepted_user_id=?
         WHERE token_hash=? AND email=? AND accepted_at IS NULL AND expires_at>?
         AND (CASE WHEN kind='PRESIDENT' THEN ${activeAdmin('representative_invitations.invited_by')}
           ELSE ${activePresident('representative_invitations.invited_by', 'representative_invitations.club_id')} END)
-        AND EXISTS (SELECT 1 FROM clubs WHERE id=representative_invitations.club_id AND status='ACTIVE')`,
+        AND EXISTS (SELECT 1 FROM clubs WHERE id=representative_invitations.club_id AND status='ACTIVE')
+        RETURNING kind`,
         ).bind(now, userId, tokenHash, input.data.email, now),
         c.env.DB.prepare(
           `INSERT INTO "user" (id,name,email,emailVerified,createdAt,updatedAt,twoFactorEnabled,status)
@@ -241,9 +274,9 @@ representativeInvitationAcceptanceRoutes.post(
       ]);
       if (result[0]!.meta.changes !== 1)
         return c.json({ error: 'Invalid invitation' }, 400);
+      return c.json({ created: true, kind: result[0]!.results[0]!.kind }, 201);
     } catch {
       return c.json({ error: 'Invalid invitation' }, 400);
     }
-    return c.json({ created: true }, 201);
   },
 );

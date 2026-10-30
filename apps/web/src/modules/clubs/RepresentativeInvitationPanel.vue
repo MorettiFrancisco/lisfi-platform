@@ -51,7 +51,7 @@ async function create() {
           : 'La aceptación habilita al presidente para este club.'
       }}
     </p>
-    <p v-if="kind === 'REPRESENTATIVE'">
+    <p>
       Si la persona ya tiene cuenta, puede iniciar sesión y aceptar el enlace
       con esa misma cuenta.
     </p>

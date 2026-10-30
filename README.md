@@ -189,6 +189,9 @@ puede abrir el enlace, elegir **Ya tengo una cuenta**, iniciar sesión con el co
 invitado y aceptar; las dos aprobaciones habilitan el nuevo club sin crear otra
 cuenta ni afectar sus membresías anteriores. También puede solicitarse la asignación
 por correo desde el formulario de cambios.
+Un presidente con cuenta existente también puede aceptar su enlace luego de iniciar
+sesión. Se reutiliza su membresía del club si ya la tenía; al dejar la presidencia,
+se revoca esa membresía de ese club. El acceso a otros clubes se conserva.
 
 Las solicitudes se consultan en la sección de cambios de los administradores; aún
 no se envían avisos automáticos. Al aceptar la invitación del primer presidente,

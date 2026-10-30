@@ -289,7 +289,10 @@ export const openApiDocument = {
       post: request('Aceptar invitación con cuenta nueva', 'Invitaciones', {
         secure: false,
         input: adminInvitationAcceptSchema,
-        output: ok,
+        output: z.object({
+          created: z.boolean(),
+          kind: z.enum(['PRESIDENT', 'REPRESENTATIVE']),
+        }),
         status: '201',
       }),
     },
@@ -297,9 +300,12 @@ export const openApiDocument = {
       post: request('Aceptar invitación con cuenta existente', 'Invitaciones', {
         input: tokenBody,
         status: '201',
-        output: z.object({ requested: z.boolean() }),
+        output: z.object({
+          requested: z.boolean(),
+          kind: z.enum(['PRESIDENT', 'REPRESENTATIVE']),
+        }),
         description:
-          'La sesión debe corresponder al correo invitado. Genera una solicitud pendiente de dos aprobaciones.',
+          'La sesión debe corresponder al correo invitado. Para representantes genera una solicitud pendiente de dos aprobaciones; un presidente invitado por LISFI queda habilitado al aceptar.',
       }),
     },
     '/api/recovery-links': {
