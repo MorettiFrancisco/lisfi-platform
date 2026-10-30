@@ -77,11 +77,9 @@ async function submit() {
     notice.value =
       'Solicitud enviada. El cambio se aplicará después de dos aprobaciones de la liga.';
     await load();
-  } catch (cause) {
+  } catch {
     error.value =
-      cause instanceof Error && cause.message === 'Verified account required'
-        ? 'La persona debe tener una cuenta activa con correo verificado.'
-        : 'No pudimos enviar la solicitud. Revisá los datos y volvé a intentar.';
+      'No pudimos enviar la solicitud. Revisá los datos y volvé a intentar.';
   } finally {
     busy.value = false;
   }
@@ -128,9 +126,11 @@ async function reject(id: string) {
   }
 }
 function description(item: Item) {
-  return item.kind === 'PLAYER'
-    ? `${item.payload.firstName} ${item.payload.lastName}`
-    : String(item.payload.name || '');
+  if (item.kind === 'PLAYER')
+    return `${item.payload.firstName} ${item.payload.lastName}`;
+  if (item.kind === 'REPRESENTATIVE')
+    return String(item.payload.name || 'Incorporación solicitada');
+  return String(item.payload.name || '');
 }
 onMounted(load);
 watch(
@@ -224,7 +224,7 @@ watch(
               · Nombre corto: {{ item.payload.shortName }}</span
             >
           </p>
-          <p v-if="item.kind === 'REPRESENTATIVE'">
+          <p v-if="item.kind === 'REPRESENTATIVE' && item.payload.email">
             Correo: {{ item.payload.email }}
           </p>
           <p

@@ -162,7 +162,7 @@ test('a stale edit preserves the draft and requires reloading before saving the 
 
 test('assignment form and approval queue show the proposed changes', async ({
   page,
-}, testInfo) => {
+}) => {
   const requests: Array<Record<string, unknown>> = [];
   await page.route('**/api/me', (route) =>
     route.fulfill({
@@ -219,9 +219,6 @@ test('assignment form and approval queue show the proposed changes', async ({
   await page.getByLabel('¿Qué querés solicitar?').selectOption('PLAYER');
   await page.getByLabel('Nombre', { exact: true }).fill('Ana');
   await page.getByLabel('Apellido', { exact: true }).fill('Prueba');
-  await page.locator('.changes-panel').screenshot({
-    path: `tmp/previews/solicitud-jugador-${testInfo.project.name}.png`,
-  });
   await page.getByRole('button', { name: 'Enviar solicitud' }).click();
   expect(requests).toEqual([
     { kind: 'PLAYER', clubId: club.id, firstName: 'Ana', lastName: 'Prueba' },
@@ -230,8 +227,5 @@ test('assignment form and approval queue show the proposed changes', async ({
     page.getByText('Solicitud enviada.', { exact: false }),
   ).toBeVisible();
   await expect(page.getByText('Reemplaza a Presidente anterior')).toBeVisible();
-  await page.locator('.changes-panel').screenshot({
-    path: `tmp/previews/aprobaciones-${testInfo.project.name}.png`,
-  });
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
 });

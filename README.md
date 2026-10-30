@@ -152,8 +152,10 @@ en cada petición. `/api/me` tampoco devuelve clubes a administradores con MFA p
   (`name_asc`, `name_desc`, `newest`). Los totales están filtrados por permisos;
   pedir `ALL` nunca amplía el acceso de un representante. Búsqueda literal por nombre,
   nombre corto o slug; SQLite aplica su comparación de texto predeterminada.
-- `POST /api/clubs`: nombre (1–120 caracteres), nombre corto opcional (hasta 40) y
-  slug único (3–80 letras ASCII minúsculas, números y guiones). Crea un club activo.
+- El alta se solicita mediante `POST /api/changes` con `kind: CLUB`, nombre
+  (1–120 caracteres), nombre corto opcional (hasta 40) y slug único (3–80 letras
+  ASCII minúsculas, números y guiones). Se crea después de dos aprobaciones válidas;
+  `POST /api/clubs` directo devuelve 403.
 - `PATCH /api/clubs/:id`: los campos a modificar y `version` de la última lectura.
   Rechaza versiones obsoletas con 409 para impedir sobrescrituras concurrentes.
   El estado puede ser `ACTIVE` o `INACTIVE`; no se eliminan registros históricos.
@@ -164,7 +166,16 @@ acción, fecha y valores anteriores/nuevos del club; no contraseñas ni secretos
 La migración `0003_fixed_overlord.sql` agrega auditoría, nombre corto, fecha de
 actualización y versión sin borrar clubes existentes. La fecha de actualización
 de un club previo se presenta como su fecha de creación hasta la primera edición.
-La consulta administrativa de auditoría y las invitaciones quedan para otra entrega.
+La consulta administrativa de auditoría está disponible; las invitaciones quedan
+para otra entrega.
+
+Las solicitudes para asignar un representante se reciben sin revelar si existe
+una cuenta para el correo indicado. Al aplicar la segunda aprobación, se comprueba
+que la cuenta esté activa y el correo verificado; si no, la solicitud sigue
+pendiente y la aprobación falla. Los representantes del club no reciben el correo
+ni la identidad de la cuenta propuesta en el listado de solicitudes. La nueva
+auditoría de cambios aplicados guarda identificadores y tipo, no el contenido
+personal completo; los eventos anteriores a esta modificación se conservan.
 
 ### Primer administrador y MFA local
 

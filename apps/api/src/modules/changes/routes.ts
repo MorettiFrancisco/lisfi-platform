@@ -39,7 +39,18 @@ changeRoutes.get('/', async (c) => {
   return c.json({
     items: rows.results.map((row) => ({
       ...row,
-      payload: JSON.parse(String(row.payloadJson)),
+      payload: (() => {
+        const payload = JSON.parse(String(row.payloadJson)) as Record<
+          string,
+          unknown
+        >;
+        if (!identity.isLeagueAdmin && row.kind === 'REPRESENTATIVE') {
+          delete payload.email;
+          delete payload.name;
+          delete payload.userId;
+        }
+        return payload;
+      })(),
       payloadJson: undefined,
     })),
   });
@@ -89,18 +100,9 @@ changeRoutes.post('/', async (c) => {
       previousPresidentName: previous?.name ?? null,
     };
   } else if (input.kind === 'REPRESENTATIVE') {
-    const target = await c.env.DB.prepare(
-      'SELECT id, name, email FROM "user" WHERE lower(email)=? AND status=\'ACTIVE\' AND "emailVerified"=1',
-    )
-      .bind(input.email)
-      .first<{ id: string; name: string; email: string }>();
-    if (!target) return c.json({ error: 'Verified account required' }, 400);
-    payload = {
-      ...payload,
-      userId: target.id,
-      name: target.name,
-      email: target.email,
-    };
+    // Resolve the account only when the second administrator approves. This
+    // keeps request responses independent of whether an account exists.
+    payload = { ...payload, email: input.email };
   } else if (input.kind === 'PLAYER')
     payload = {
       ...payload,

@@ -628,6 +628,18 @@ describe('club management and atomic audit', () => {
     expect(verified.status).toBe(200);
     saveCookies(verified);
   }
+  async function secondAdministrator() {
+    await seedUser('second-admin', true);
+    await login('second-admin');
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+    return cookie;
+  }
   const details = {
     name: 'Estrella del Sur',
     shortName: 'Estrella',
@@ -760,6 +772,201 @@ describe('club management and atomic audit', () => {
     expect((await request(`/api/changes/${stale}/approve`, {})).status).toBe(
       409,
     );
+  });
+  it('does not disclose representative account existence and hides target data from club representatives', async () => {
+    await administrator();
+    const adminCookie = cookie;
+    const club = await createClub();
+    await seedUser('requesting-representative');
+    await seedUser('existing-target');
+    await createDb(env.DB).insert(clubMemberships).values({
+      id: 'requester-membership',
+      userId: 'requesting-representative',
+      clubId: club.id,
+      createdAt: new Date().toISOString(),
+    });
+    await login('requesting-representative');
+
+    const existing = await request('/api/changes', {
+      kind: 'REPRESENTATIVE',
+      clubId: club.id,
+      email: 'existing-target@example.invalid',
+    });
+    const missing = await request('/api/changes', {
+      kind: 'REPRESENTATIVE',
+      clubId: club.id,
+      email: 'missing-target@example.invalid',
+    });
+    expect(existing.status).toBe(201);
+    expect(missing.status).toBe(201);
+    const existingId = ((await existing.json()) as { id: string }).id;
+    const missingId = ((await missing.json()) as { id: string }).id;
+    const stored = await env.DB.prepare(
+      'SELECT id, payload_json AS payloadJson FROM change_requests WHERE id IN (?, ?) ORDER BY id',
+    )
+      .bind(existingId, missingId)
+      .all<{ id: string; payloadJson: string }>();
+    for (const row of stored.results) {
+      expect(JSON.parse(row.payloadJson)).toMatchObject({
+        email: expect.stringMatching(/@example\.invalid$/),
+      });
+      expect(JSON.parse(row.payloadJson)).not.toHaveProperty('userId');
+      expect(JSON.parse(row.payloadJson)).not.toHaveProperty('name');
+    }
+
+    const representativeItems = (await (
+      await request('/api/changes')
+    ).json()) as { items: { id: string; payload: Record<string, unknown> }[] };
+    for (const id of [existingId, missingId]) {
+      const item = representativeItems.items.find((entry) => entry.id === id)!;
+      expect(item.payload).not.toHaveProperty('email');
+      expect(item.payload).not.toHaveProperty('name');
+      expect(item.payload).not.toHaveProperty('userId');
+    }
+
+    cookie = adminCookie;
+    const adminItems = (await (await request('/api/changes')).json()) as {
+      items: { id: string; payload: Record<string, unknown> }[];
+    };
+    expect(
+      adminItems.items.find((entry) => entry.id === existingId)?.payload.email,
+    ).toBe('existing-target@example.invalid');
+    expect(
+      adminItems.items.find((entry) => entry.id === missingId)?.payload.email,
+    ).toBe('missing-target@example.invalid');
+  });
+  it('resolves representative accounts at application, rechecks availability and preserves legacy requests', async () => {
+    await administrator();
+    const firstAdminCookie = cookie;
+    const secondAdminCookie = await secondAdministrator();
+    const club = await createClub();
+    await seedUser('deferred-target');
+
+    cookie = firstAdminCookie;
+    const response = await request('/api/changes', {
+      kind: 'REPRESENTATIVE',
+      clubId: club.id,
+      email: 'deferred-target@example.invalid',
+    });
+    expect(response.status).toBe(201);
+    const requestId = ((await response.json()) as { id: string }).id;
+    const storedPayload = await env.DB.prepare(
+      'SELECT payload_json FROM change_requests WHERE id=?',
+    )
+      .bind(requestId)
+      .first<string>('payload_json');
+    expect(JSON.parse(storedPayload!)).toMatchObject({
+      email: 'deferred-target@example.invalid',
+    });
+
+    expect(
+      (await request(`/api/changes/${requestId}/approve`, {})).status,
+    ).toBe(200);
+    await env.DB.prepare('UPDATE "user" SET status=? WHERE id=?')
+      .bind('SUSPENDED', 'deferred-target')
+      .run();
+    cookie = secondAdminCookie;
+    expect(
+      (await request(`/api/changes/${requestId}/approve`, {})).status,
+    ).toBe(409);
+    expect(
+      await env.DB.prepare(
+        'SELECT count(*) FROM change_approvals WHERE request_id=?',
+      )
+        .bind(requestId)
+        .first('count(*)'),
+    ).toBe(1);
+    expect(
+      await env.DB.prepare(
+        'SELECT count(*) FROM club_memberships WHERE user_id=? AND club_id=?',
+      )
+        .bind('deferred-target', club.id)
+        .first('count(*)'),
+    ).toBe(0);
+
+    await env.DB.prepare(
+      'UPDATE "user" SET status=?, "emailVerified"=0 WHERE id=?',
+    )
+      .bind('ACTIVE', 'deferred-target')
+      .run();
+    expect(
+      (await request(`/api/changes/${requestId}/approve`, {})).status,
+    ).toBe(409);
+    await env.DB.prepare('UPDATE "user" SET "emailVerified"=1 WHERE id=?')
+      .bind('deferred-target')
+      .run();
+    expect(
+      (await request(`/api/changes/${requestId}/approve`, {})).status,
+    ).toBe(200);
+    expect(
+      await env.DB.prepare(
+        'SELECT count(*) FROM club_memberships WHERE user_id=? AND club_id=?',
+      )
+        .bind('deferred-target', club.id)
+        .first('count(*)'),
+    ).toBe(1);
+    const audit = await env.DB.prepare(
+      "SELECT metadata_json FROM audit_logs WHERE action='CHANGE_APPLIED' AND resource_id=?",
+    )
+      .bind(requestId)
+      .first<string>('metadata_json');
+    expect(JSON.parse(audit!)).toMatchObject({
+      kind: 'REPRESENTATIVE',
+      clubId: club.id,
+    });
+    expect(audit).not.toContain('deferred-target@example.invalid');
+
+    await seedUser('legacy-target');
+    const legacyId = crypto.randomUUID();
+    const legacyEntityId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      "INSERT INTO change_requests (id, kind, club_id, requester_id, payload_json, status, created_at) VALUES (?, 'REPRESENTATIVE', ?, ?, ?, 'PENDING', ?)",
+    )
+      .bind(
+        legacyId,
+        club.id,
+        'club-admin',
+        JSON.stringify({
+          entityId: legacyEntityId,
+          userId: 'legacy-target',
+          name: 'Legacy Fixture',
+          email: 'legacy-target@example.invalid',
+        }),
+        now,
+      )
+      .run();
+    cookie = firstAdminCookie;
+    expect((await request(`/api/changes/${legacyId}/approve`, {})).status).toBe(
+      200,
+    );
+    cookie = secondAdminCookie;
+    expect((await request(`/api/changes/${legacyId}/approve`, {})).status).toBe(
+      200,
+    );
+    expect(
+      await env.DB.prepare(
+        'SELECT count(*) FROM club_memberships WHERE user_id=? AND club_id=?',
+      )
+        .bind('legacy-target', club.id)
+        .first('count(*)'),
+    ).toBe(1);
+    const legacyAudit = await env.DB.prepare(
+      "SELECT metadata_json FROM audit_logs WHERE action='CHANGE_APPLIED' AND resource_id=?",
+    )
+      .bind(legacyId)
+      .first<string>('metadata_json');
+    expect(legacyAudit).not.toContain('legacy-target@example.invalid');
+    await login('legacy-target');
+    const legacyItems = (await (await request('/api/changes')).json()) as {
+      items: { id: string; payload: Record<string, unknown> }[];
+    };
+    const legacyItem = legacyItems.items.find(
+      (entry) => entry.id === legacyId,
+    )!;
+    expect(legacyItem.payload).not.toHaveProperty('email');
+    expect(legacyItem.payload).not.toHaveProperty('name');
+    expect(legacyItem.payload).not.toHaveProperty('userId');
   });
   it('guards all club routes and hides memberships in me until admin MFA is verified', async () => {
     expect((await request('/api/clubs')).status).toBe(401);
