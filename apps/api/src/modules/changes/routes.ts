@@ -103,11 +103,17 @@ changeRoutes.post('/', async (c) => {
     )
       .bind(clubId)
       .first<{ id: string; name: string }>();
+    const previousAuthority = await c.env.DB.prepare(
+      'SELECT id FROM club_president_authorities WHERE club_id=? AND revoked_at IS NULL',
+    )
+      .bind(clubId)
+      .first<{ id: string }>();
     payload = {
       ...payload,
       name: input.name,
       previousPresidentId: previous?.id ?? null,
       previousPresidentName: previous?.name ?? null,
+      previousAuthorityId: previousAuthority?.id ?? null,
     };
   } else if (input.kind === 'REPRESENTATIVE') {
     // Resolve the account only when the second administrator approves. This

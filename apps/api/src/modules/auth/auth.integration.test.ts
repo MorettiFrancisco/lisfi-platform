@@ -1082,6 +1082,212 @@ describe('club management and atomic audit', () => {
       .run();
     return { id, version: 1 };
   }
+  it('replaces a president atomically, revokes only that club and invalidates outstanding invitations', async () => {
+    await administrator();
+    const firstCookie = cookie;
+    const secondCookie = await secondAdministrator();
+    cookie = firstCookie;
+    const club = await createClub();
+    const db = createDb(env.DB);
+    await seedUser('old-president');
+    const now = new Date().toISOString();
+    await db.insert(clubs).values({
+      id: 'other-club',
+      name: 'Other',
+      slug: 'other-club',
+      createdAt: now,
+    });
+    await db.insert(clubMemberships).values([
+      {
+        id: 'president-membership',
+        userId: 'old-president',
+        clubId: club.id,
+        createdAt: now,
+      },
+      {
+        id: 'other-membership',
+        userId: 'old-president',
+        clubId: 'other-club',
+        createdAt: now,
+      },
+    ]);
+    await env.DB.prepare(
+      'INSERT INTO club_president_authorities (id,membership_id,club_id,user_id,created_at) VALUES (?,?,?,?,?)',
+    )
+      .bind(
+        'old-authority',
+        'president-membership',
+        club.id,
+        'old-president',
+        now,
+      )
+      .run();
+    await env.DB.prepare(
+      "INSERT INTO club_officials (id,club_id,name,position,created_at) VALUES (?,?,'Old President','PRESIDENT',?)",
+    )
+      .bind('old-official', club.id, now)
+      .run();
+    const issued = await request('/api/representative-invitations', {
+      email: 'old-link@example.invalid',
+      clubId: club.id,
+      kind: 'PRESIDENT',
+    });
+    expect(issued.status).toBe(201);
+    const token = ((await issued.json()) as { token: string }).token;
+    const change = await request('/api/changes', {
+      kind: 'PRESIDENT',
+      clubId: club.id,
+      name: 'New President',
+    });
+    const id = ((await change.json()) as { id: string }).id;
+    expect(change.status).toBe(201);
+    expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(200);
+    expect(
+      await env.DB.prepare('SELECT revoked_at FROM club_memberships WHERE id=?')
+        .bind('president-membership')
+        .first('revoked_at'),
+    ).toBeNull();
+    cookie = secondCookie;
+    await env.DB.prepare(
+      "CREATE TRIGGER fail_president_revoke BEFORE INSERT ON audit_logs WHEN NEW.action='MEMBERSHIP_REVOKED' BEGIN SELECT RAISE(ABORT,'audit failure'); END",
+    ).run();
+    try {
+      expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(
+        409,
+      );
+      expect(
+        await env.DB.prepare(
+          'SELECT revoked_at FROM club_president_authorities WHERE id=?',
+        )
+          .bind('old-authority')
+          .first('revoked_at'),
+      ).toBeNull();
+      expect(
+        await env.DB.prepare('SELECT ended_at FROM club_officials WHERE id=?')
+          .bind('old-official')
+          .first('ended_at'),
+      ).toBeNull();
+    } finally {
+      await env.DB.prepare('DROP TRIGGER fail_president_revoke').run();
+    }
+    expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(200);
+    expect(
+      await env.DB.prepare('SELECT revoked_at FROM club_memberships WHERE id=?')
+        .bind('president-membership')
+        .first('revoked_at'),
+    ).toBeTruthy();
+    expect(
+      await env.DB.prepare('SELECT revoked_at FROM club_memberships WHERE id=?')
+        .bind('other-membership')
+        .first('revoked_at'),
+    ).toBeNull();
+    expect(
+      await env.DB.prepare(
+        "SELECT count(*) FROM audit_logs WHERE action='MEMBERSHIP_REVOKED' AND resource_id=?",
+      )
+        .bind(club.id)
+        .first('count(*)'),
+    ).toBe(1);
+    expect(await (await request(`/api/clubs/${club.id}`)).json()).toMatchObject(
+      { president: { name: 'New President' } },
+    );
+    cookie = '';
+    expect(
+      (
+        await request('/api/representative-invitations/accept', {
+          token,
+          name: 'Old invitation',
+          email: 'old-link@example.invalid',
+          password,
+        })
+      ).status,
+    ).toBe(400);
+    await login('old-president');
+    expect((await request(`/api/clubs/${club.id}`)).status).toBe(404);
+    expect((await request('/api/clubs/other-club')).status).toBe(200);
+    expect(
+      (
+        await request('/api/representative-invitations', {
+          clubId: club.id,
+          email: 'blocked@example.invalid',
+        })
+      ).status,
+    ).toBe(404);
+    cookie = firstCookie;
+    const newInvite = await request('/api/representative-invitations', {
+      clubId: club.id,
+      email: 'new-president@example.invalid',
+      kind: 'PRESIDENT',
+    });
+    expect(newInvite.status).toBe(201);
+    const newToken = ((await newInvite.json()) as { token: string }).token;
+    cookie = '';
+    expect(
+      (
+        await request(
+          '/api/representative-invitations/accept',
+          {
+            token: newToken,
+            name: 'New President',
+            email: 'new-president@example.invalid',
+            password,
+          },
+          { 'cf-connecting-ip': '192.0.2.245' },
+        )
+      ).status,
+    ).toBe(201);
+    expect(
+      await env.DB.prepare(
+        "SELECT count(*) FROM club_officials WHERE club_id=? AND position='PRESIDENT' AND ended_at IS NULL",
+      )
+        .bind(club.id)
+        .first('count(*)'),
+    ).toBe(1);
+  }, 45000);
+
+  it('rejects a president change if authority changed after the request', async () => {
+    await administrator();
+    const firstCookie = cookie;
+    const secondCookie = await secondAdministrator();
+    cookie = firstCookie;
+    const club = await createClub();
+    const change = await request('/api/changes', {
+      kind: 'PRESIDENT',
+      clubId: club.id,
+      name: 'Requested President',
+    });
+    const id = ((await change.json()) as { id: string }).id;
+    expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(200);
+    await seedUser('new-president');
+    const now = new Date().toISOString();
+    await createDb(env.DB).insert(clubMemberships).values({
+      id: 'new-member',
+      userId: 'new-president',
+      clubId: club.id,
+      createdAt: now,
+    });
+    await env.DB.prepare(
+      'INSERT INTO club_president_authorities (id,membership_id,club_id,user_id,created_at) VALUES (?,?,?,?,?)',
+    )
+      .bind('new-authority', 'new-member', club.id, 'new-president', now)
+      .run();
+    cookie = secondCookie;
+    expect((await request(`/api/changes/${id}/approve`, {})).status).toBe(409);
+    expect(
+      await env.DB.prepare(
+        'SELECT revoked_at FROM club_president_authorities WHERE id=?',
+      )
+        .bind('new-authority')
+        .first('revoked_at'),
+    ).toBeNull();
+    expect(
+      await env.DB.prepare(
+        'SELECT count(*) FROM change_approvals WHERE request_id=?',
+      )
+        .bind(id)
+        .first('count(*)'),
+    ).toBe(1);
+  }, 30000);
   it('invites a representative without falsely verifying email and grants access only after two approvals', async () => {
     await administrator();
     const firstCookie = cookie;
@@ -1115,6 +1321,9 @@ describe('club management and atomic audit', () => {
     expect(await (await request('/api/me')).json()).toMatchObject({
       presidentClubIds: [club.id],
     });
+    expect(await (await request(`/api/clubs/${club.id}`)).json()).toMatchObject(
+      { president: { name: 'President' } },
+    );
     const presidentCookie = cookie;
     expect(
       (
@@ -1221,6 +1430,18 @@ describe('club management and atomic audit', () => {
       .bind(club.id)
       .first<string>('membership_id');
     cookie = firstCookie;
+    const stalePresidentInvite = await request(
+      '/api/representative-invitations',
+      {
+        clubId: club.id,
+        email: 'stale-president@example.invalid',
+        kind: 'PRESIDENT',
+      },
+    );
+    expect(stalePresidentInvite.status).toBe(201);
+    const stalePresidentToken = (
+      (await stalePresidentInvite.json()) as { token: string }
+    ).token;
     expect(
       (
         await request(
@@ -1241,6 +1462,20 @@ describe('club management and atomic audit', () => {
       ).status,
     ).toBe(404);
     cookie = '';
+    expect(
+      (
+        await request(
+          '/api/representative-invitations/accept',
+          {
+            token: stalePresidentToken,
+            name: 'Stale President',
+            email: 'stale-president@example.invalid',
+            password,
+          },
+          { 'cf-connecting-ip': '192.0.2.244' },
+        )
+      ).status,
+    ).toBe(400);
     expect(
       (
         await request('/api/representative-invitations/accept', {

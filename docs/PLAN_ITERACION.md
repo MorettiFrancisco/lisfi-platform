@@ -27,11 +27,13 @@ club. Las membresías de representantes conservan la doble aprobación.
 
 ## Próximas entregas propuestas
 
-1. Definir y ensayar la recuperación de emergencia del administrador inicial y la
-   pérdida de MFA, con responsables designados y controles contra escalación.
-2. Validar con LISFI la verificación de identidad y número para WhatsApp, y decidir
-   si se requerirá verificación del correo.
-3. Preparar backups cifrados, restauración probada, retención de auditoría, alertas,
+1. Completar y probar el flujo de representantes con cuenta existente y membresías
+   en varios clubes; definir el tratamiento de solicitudes pendientes al revocar
+   al presidente solicitante o a un administrador aprobador.
+2. Incorporar documentación OpenAPI interactiva y definir y ensayar la recuperación
+   de emergencia del administrador inicial y la pérdida de MFA.
+3. Validar con LISFI la verificación de identidad y número para WhatsApp; preparar
+   backups cifrados, restauración probada, retención de auditoría, alertas,
    límites de gasto y separación de entornos antes de un piloto.
 4. Confirmar las reglas funcionales pendientes y ejecutar aceptación integral en
    escritorio y móvil con datos ficticios.

@@ -148,6 +148,13 @@ representativeInvitationAcceptanceRoutes.post(
           userId,
         ),
         c.env.DB.prepare(
+          `INSERT INTO club_officials (id,club_id,name,position,created_at)
+        SELECT ?,i.club_id,u.name,'PRESIDENT',? FROM representative_invitations i
+        JOIN "user" u ON u.id=i.accepted_user_id
+        WHERE i.token_hash=? AND i.accepted_user_id=? AND i.kind='PRESIDENT'
+        AND NOT EXISTS (SELECT 1 FROM club_officials o WHERE o.club_id=i.club_id AND o.position='PRESIDENT' AND o.ended_at IS NULL)`,
+        ).bind(crypto.randomUUID(), now, tokenHash, userId),
+        c.env.DB.prepare(
           `INSERT INTO club_memberships (id,user_id,club_id,role,created_at)
         SELECT ?,accepted_user_id,club_id,'CLUB_REPRESENTATIVE',? FROM representative_invitations
         WHERE token_hash=? AND accepted_user_id=? AND kind='PRESIDENT'`,

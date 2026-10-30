@@ -178,10 +178,17 @@ aprobarla antes de que exista acceso al club. Las cuentas existentes pueden ser
 asignadas a otros clubes mediante solicitudes de cambio.
 
 Las solicitudes se consultan en la sección de cambios de los administradores; aún
-no se envían avisos automáticos. El permiso de presidente y la ficha institucional
-de presidencia son registros separados: cuando cambia el presidente, LISFI debe
-revocar la membresía de la cuenta anterior, actualizar la ficha institucional y
-enviar una nueva invitación. El cambio de ficha por sí solo no revoca ese acceso.
+no se envían avisos automáticos. Al aceptar la invitación del primer presidente,
+se crea la ficha institucional si todavía no existe. Si se aprueba un cambio de
+presidente, se revocan automáticamente su autoridad y su acceso a ese club, se
+invalidan las invitaciones de presidencia pendientes y se conserva el acceso a
+otros clubes. Luego LISFI puede invitar al nuevo presidente. Si la ficha ya existe,
+la identidad de la persona invitada debe verificarse manualmente antes de enviar
+el enlace; la aplicación no compara ni verifica su identidad automáticamente.
+Si la autoridad cambió desde que se solicitó una modificación de presidencia, la
+segunda aprobación se rechaza: se debe revisar el caso y crear una solicitud nueva.
+Las solicitudes anteriores a la migración 0013 pueden necesitar recrearse por el
+mismo motivo si el club ya tenía un presidente con autoridad activa.
 
 Desde el detalle del club se puede revocar una membresía; la siguiente petición de
 esa cuenta pierde acceso a ese club, manteniendo sus otras membresías. El

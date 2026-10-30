@@ -140,6 +140,20 @@ clubRoutes.delete('/:id/representatives/:membershipId', async (c) => {
       `UPDATE club_president_authorities SET revoked_at=? WHERE membership_id=? AND club_id=? AND revoked_at IS NULL
       AND EXISTS (SELECT 1 FROM audit_logs WHERE id=?)`,
     ).bind(now, c.req.param('membershipId'), c.req.param('id'), auditId),
+    c.env.DB.prepare(
+      `UPDATE representative_invitations SET expires_at=?
+      WHERE kind='PRESIDENT' AND club_id=? AND accepted_at IS NULL AND expires_at>?
+      AND EXISTS (SELECT 1 FROM club_president_authorities p WHERE p.membership_id=? AND p.club_id=? AND p.revoked_at=?)
+      AND EXISTS (SELECT 1 FROM audit_logs WHERE id=?)`,
+    ).bind(
+      now,
+      c.req.param('id'),
+      now,
+      c.req.param('membershipId'),
+      c.req.param('id'),
+      now,
+      auditId,
+    ),
   ]);
   if (result[1]!.meta.changes !== 1)
     return c.json({ error: 'Membership unavailable' }, 404);

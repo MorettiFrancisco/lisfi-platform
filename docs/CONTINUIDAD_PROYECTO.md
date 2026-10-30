@@ -1,7 +1,7 @@
 # Continuidad de LISFI Platform
 
-Estado registrado el 29 de octubre de 2026. La base de este documento es el
-commit `e4a976b` de `main`. El proyecto está en desarrollo local: la Etapa 1
+Estado actualizado el 29 de octubre de 2026, después de `58acf43`. El proyecto
+está en desarrollo local: la Etapa 1
 todavía no está cerrada ni se autorizó un despliegue a producción.
 
 ## Qué se hizo
@@ -33,13 +33,13 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 ## Verificación y estado local
 
 - En la última ejecución completa `pnpm check` pasó: formato, ESLint, TypeScript,
-  43 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
+  45 pruebas Vitest y builds. El build de Wrangler usó `--dry-run`, sin desplegar.
 - Playwright ejecutó las pruebas existentes en escritorio y móvil: 19 pasaron y
   una prueba de bootstrap se omitió en móvil por configuración. La nueva prueba
   de la pantalla de invitación del presidente pasó en ambos tamaños por separado.
   La prueba de pantalla nueva usa respuestas simuladas; el circuito de permisos,
   invitaciones y doble aprobación también se comprobó en integración con D1 emulada.
-- Las migraciones hasta `0012` se aplicaron a D1 **local**; no se aplicaron en una
+- Las migraciones hasta `0013` se aplicaron a D1 **local**; no se aplicaron en una
   base remota. No hay datos personales reales de prueba ni secretos versionados.
 - Para retomar: instalar Node y pnpm según [README](../README.md), ejecutar
   `pnpm install`, `pnpm db:migrate:local` y `pnpm dev`. La configuración y el
@@ -48,11 +48,13 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 
 ## Qué quedó pendiente y riesgos
 
-1. **Presidencia y acceso:** la ficha institucional del presidente y la autoridad
-   de su cuenta son registros separados. Cambiar la ficha no revoca la cuenta
-   anterior. Por ahora LISFI debe revocar la membresía anterior, actualizar la
-   ficha y emitir una invitación nueva. La próxima corrección debe vincular ambos
-   cambios de forma coherente y auditada, y probar reemplazos y revocaciones.
+1. **Presidencia y acceso:** el cambio aprobado revoca la autoridad y membresía
+   anterior del club, invalida invitaciones de presidencia pendientes y conserva
+   membresías en otros clubes. La identidad del nuevo presidente sigue dependiendo
+   de la verificación manual de LISFI; las solicitudes pendientes del presidente
+   anterior necesitan una política explícita. Algunas solicitudes de cambio de
+   presidente creadas antes de la migración 0013 deberán recrearse si ya había
+   una autoridad activa, para verificar la situación actual antes de aprobarlas.
 2. **Avisos:** las solicitudes aparecen en la sección administrativa de cambios,
    pero no se envían notificaciones. Definir con LISFI cómo se enteran los dos
    administradores sin agregar un proveedor innecesario.
@@ -76,9 +78,9 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 
 ## Orden propuesto de entregables
 
-1. **Cierre del circuito de presidencia:** sincronizar cambio de presidente y
-   revocación de autoridad, revisar solicitudes pendientes y agregar pruebas de
-   regresión, aislamiento y auditoría. Mantener iteraciones pequeñas y verificables.
+1. **Cierre del circuito de presidencia:** definir qué hacer con solicitudes
+   pendientes del presidente anterior y agregar las pruebas correspondientes.
+   Mantener iteraciones pequeñas y verificables.
 2. **Aceptación del flujo de clubes:** probar con datos ficticios la invitación de
    presidente, dos representantes, dos aprobaciones, un representante en varios
    clubes y acceso denegado a uno ajeno; cubrir el flujo completo en navegador.
