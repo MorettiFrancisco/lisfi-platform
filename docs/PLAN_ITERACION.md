@@ -18,11 +18,11 @@ Etapa 1 en entregas pequeñas; no se realizó ningún despliegue.
 
 ## Bloqueos para completar el circuito de clubes
 
-El bootstrap crea un solo administrador y no existe todavía un flujo para dar de alta
-un segundo. Por lo tanto, una instalación nueva no puede completar desde la interfaz
-la doble aprobación exigida para crear clubes. Tampoco existe el flujo para invitar
-representantes, verificar su correo o revocar su membresía. El sistema exige una
-cuenta activa y con correo verificado para aplicar una asignación de representante.
+El bootstrap crea un solo administrador. La siguiente entrega agrega una invitación
+temporal para que el administrador inicial con MFA incorpore a otro administrador,
+que debe configurar MFA antes de aprobar. El flujo de invitación de representantes,
+verificación de correo y revocación de membresías sigue pendiente. El sistema exige
+una cuenta activa y con correo verificado para aplicar una asignación de representante.
 
 ## Próximas entregas propuestas
 
@@ -30,10 +30,10 @@ cuenta activa y con correo verificado para aplicar una asignación de representa
    auditoría actual, mantener las verificaciones de doble aprobación y el aislamiento
    entre clubes, y dejar `pnpm check` reproducible en Windows y CI. Verificar las
    migraciones y sus restricciones desde una base vacía y desde una base existente.
-2. **Administradores y recuperación.** Acordar quién puede otorgar o revocar el
-   privilegio de administración y cómo recuperar el acceso; implementar el segundo
-   administrador mediante un flujo auditado, con cuentas personales y MFA. Evitar
-   que una revocación deje a LISFI sin responsables habilitados.
+2. **Administradores y recuperación.** La invitación del segundo administrador ya
+   tiene un flujo auditado con cuentas personales y MFA. Falta acordar quién más
+   puede otorgar o revocar privilegios y cómo recuperar acceso; evitar que una
+   revocación deje a LISFI sin responsables habilitados.
 3. **Invitaciones y representantes.** Elegir canal de correo verificado y proveedor;
    implementar invitaciones de un solo uso y con vencimiento, aceptación, reenvío
    limitado, asignación y revocación lógica auditadas. Probar un club con dos

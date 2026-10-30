@@ -23,11 +23,15 @@ const actions: Record<string, string> = {
   SEASON_CREATED: 'Temporada creada',
   SEASON_ACTIVATED: 'Temporada activada',
   SEASON_CLOSED: 'Temporada cerrada',
+  ADMIN_INVITED: 'Invitación administrativa creada',
+  ADMIN_GRANTED: 'Administrador incorporado',
 };
 const types: Record<string, string> = {
   CLUB: 'Club',
   SEASON: 'Temporada',
   CHANGE_REQUEST: 'Solicitud',
+  ADMIN_INVITATION: 'Invitación administrativa',
+  USER: 'Usuario',
 };
 const kinds: Record<string, string> = {
   CLUB: 'Alta de club',
@@ -149,6 +153,10 @@ function toggle() {
             <option value="CLUB">Clubes</option>
             <option value="CHANGE_REQUEST">Solicitudes</option>
             <option value="SEASON">Temporadas</option>
+            <option value="ADMIN_INVITATION">
+              Invitaciones administrativas
+            </option>
+            <option value="USER">Usuarios</option>
           </select>
         </div>
         <div>

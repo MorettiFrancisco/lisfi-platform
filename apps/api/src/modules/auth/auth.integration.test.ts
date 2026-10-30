@@ -156,6 +156,7 @@ beforeEach(async () => {
     'players',
     'club_officials',
     'audit_logs',
+    'admin_invitations',
     'initial_admin_bootstrap',
     'club_memberships',
     'global_role_assignments',
@@ -614,6 +615,285 @@ describe('controlled first-administrator enrollment', () => {
 });
 afterAll(async () => {
   await mf?.dispose();
+});
+
+describe('second administrator invitations', () => {
+  async function owner() {
+    await seedUser('owner', true);
+    await env.DB.prepare(
+      'INSERT INTO initial_admin_bootstrap (id,user_id,created_at) VALUES (1,?,?)',
+    )
+      .bind('owner', new Date().toISOString())
+      .run();
+    await login('owner');
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    expect(enabled.status).toBe(200);
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+    return cookie;
+  }
+  const recipient = {
+    name: 'Segundo administrador',
+    email: 'second@example.invalid',
+    password,
+  };
+  async function invite() {
+    const response = await request('/api/admin-invitations', {
+      email: recipient.email,
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    return (await response.json()) as { token: string; expiresAt: string };
+  }
+  it('restricts issuance to the original active MFA administrator', async () => {
+    expect(
+      (await request('/api/admin-invitations', { email: recipient.email }))
+        .status,
+    ).toBe(401);
+    await seedUser('owner', true);
+    await env.DB.prepare(
+      'INSERT INTO initial_admin_bootstrap (id,user_id,created_at) VALUES (1,?,?)',
+    )
+      .bind('owner', new Date().toISOString())
+      .run();
+    await login('owner');
+    expect(
+      (await request('/api/admin-invitations', { email: recipient.email }))
+        .status,
+    ).toBe(403);
+    await seedUser('ordinary-admin', true);
+    await login('ordinary-admin');
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    saveCookies(verified);
+    expect(
+      (await request('/api/admin-invitations', { email: recipient.email }))
+        .status,
+    ).toBe(403);
+    expect(
+      await env.DB.prepare(
+        'SELECT count(*) AS total FROM admin_invitations',
+      ).first('total'),
+    ).toBe(0);
+  }, 30000);
+
+  it('creates a single-use invitation with a hashed token and requires MFA for the second admin', async () => {
+    const ownerCookie = await owner();
+    const ownerMe = await (await request('/api/me')).json();
+    expect(ownerMe).toMatchObject({ canManageAdmins: true });
+    const { token } = await invite();
+    expect(token).toMatch(/^[a-f0-9]{64}$/);
+    const stored = await env.DB.prepare(
+      'SELECT token_hash FROM admin_invitations',
+    ).first<string>('token_hash');
+    expect(stored).toMatch(/^[a-f0-9]{64}$/);
+    expect(stored).not.toBe(token);
+    cookie = '';
+    expect(
+      (
+        await request(
+          '/api/admin-invitations/accept',
+          { ...recipient, token },
+          { origin: 'https://untrusted.invalid' },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request('/api/admin-invitations/accept', {
+          ...recipient,
+          email: 'wrong@example.invalid',
+          token,
+        })
+      ).status,
+    ).toBe(400);
+    const response = await request('/api/admin-invitations/accept', {
+      ...recipient,
+      token,
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    expect(
+      (await request('/api/admin-invitations/accept', { ...recipient, token }))
+        .status,
+    ).toBe(400);
+    const audits = await env.DB.prepare(
+      "SELECT action,metadata_json FROM audit_logs WHERE action IN ('ADMIN_INVITED','ADMIN_GRANTED') ORDER BY action",
+    ).all<{ action: string; metadata_json: string }>();
+    expect(audits.results.map((entry) => entry.action).sort()).toEqual([
+      'ADMIN_GRANTED',
+      'ADMIN_INVITED',
+    ]);
+    expect(JSON.stringify(audits.results)).not.toContain(token);
+    expect(JSON.stringify(audits.results)).not.toContain(recipient.email);
+    await login('second');
+    expect(await (await request('/api/me')).json()).toMatchObject({
+      mfaRequired: true,
+      canManageAdmins: false,
+    });
+    expect((await request('/api/clubs')).status).toBe(403);
+    const enabled = await request('/api/auth/two-factor/enable', { password });
+    const { totpURI } = (await enabled.json()) as { totpURI: string };
+    const verified = await request('/api/auth/two-factor/verify-totp', {
+      code: totp(totpURI),
+    });
+    expect(verified.status).toBe(200);
+    saveCookies(verified);
+    expect((await request('/api/clubs')).status).toBe(200);
+    expect(
+      (
+        await request('/api/admin-invitations', {
+          email: 'third@example.invalid',
+        })
+      ).status,
+    ).toBe(403);
+    cookie = ownerCookie;
+    expect((await request('/api/clubs')).status).toBe(200);
+  }, 30000);
+
+  it('prevents expired, revoked and duplicate-account invitations without partial writes', async () => {
+    const ownerCookie = await owner();
+    const expired = await invite();
+    await env.DB.prepare(
+      "UPDATE admin_invitations SET expires_at='2000-01-01T00:00:00.000Z'",
+    ).run();
+    cookie = '';
+    expect(
+      (
+        await request('/api/admin-invitations/accept', {
+          ...recipient,
+          token: expired.token,
+        })
+      ).status,
+    ).toBe(400);
+    cookie = ownerCookie;
+    const duplicate = await invite();
+    await seedUser('second');
+    cookie = '';
+    expect(
+      (
+        await request('/api/admin-invitations/accept', {
+          ...recipient,
+          token: duplicate.token,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      await env.DB.prepare(
+        'SELECT accepted_at FROM admin_invitations WHERE token_hash=?',
+      )
+        .bind(
+          Array.from(
+            new Uint8Array(
+              await crypto.subtle.digest(
+                'SHA-256',
+                new TextEncoder().encode(duplicate.token),
+              ),
+            ),
+            (b) => b.toString(16).padStart(2, '0'),
+          ).join(''),
+        )
+        .first('accepted_at'),
+    ).toBeNull();
+    expect(
+      await env.DB.prepare(
+        "SELECT count(*) AS n FROM global_role_assignments WHERE user_id='second'",
+      ).first('n'),
+    ).toBe(0);
+    cookie = ownerCookie;
+    const revoked = await request('/api/admin-invitations', {
+      email: 'revoked@example.invalid',
+    });
+    const revokedToken = ((await revoked.json()) as { token: string }).token;
+    cookie = '';
+    await createDb(env.DB)
+      .update(globalRoleAssignments)
+      .set({ revokedAt: new Date().toISOString() })
+      .where(eq(globalRoleAssignments.userId, 'owner'));
+    expect(
+      (
+        await request('/api/admin-invitations/accept', {
+          ...recipient,
+          email: 'revoked@example.invalid',
+          token: revokedToken,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      await env.DB.prepare('SELECT count(*) AS n FROM "user" WHERE email=?')
+        .bind('revoked@example.invalid')
+        .first('n'),
+    ).toBe(0);
+  }, 30000);
+
+  it('permits one concurrent acceptance and rolls back on an audit failure', async () => {
+    const ownerCookie = await owner();
+    const first = await invite();
+    cookie = '';
+    const [a, b] = await Promise.all([
+      request('/api/admin-invitations/accept', {
+        ...recipient,
+        token: first.token,
+      }),
+      request('/api/admin-invitations/accept', {
+        ...recipient,
+        token: first.token,
+      }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 400].sort());
+    expect(
+      await env.DB.prepare('SELECT count(*) AS n FROM "user" WHERE email=?')
+        .bind(recipient.email)
+        .first('n'),
+    ).toBe(1);
+    cookie = ownerCookie;
+    const next = await request('/api/admin-invitations', {
+      email: 'rollback@example.invalid',
+    });
+    const token = ((await next.json()) as { token: string }).token;
+    await env.DB.prepare(
+      "CREATE TRIGGER fail_admin_grant BEFORE INSERT ON audit_logs WHEN NEW.action='ADMIN_GRANTED' BEGIN SELECT RAISE(ABORT, 'forced audit failure'); END",
+    ).run();
+    try {
+      cookie = '';
+      expect(
+        (
+          await request('/api/admin-invitations/accept', {
+            ...recipient,
+            email: 'rollback@example.invalid',
+            token,
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        await env.DB.prepare('SELECT count(*) AS n FROM "user" WHERE email=?')
+          .bind('rollback@example.invalid')
+          .first('n'),
+      ).toBe(0);
+      const row = await env.DB.prepare(
+        'SELECT accepted_at FROM admin_invitations WHERE email=?',
+      )
+        .bind('rollback@example.invalid')
+        .first();
+      expect(row).toMatchObject({ accepted_at: null });
+    } finally {
+      await env.DB.prepare('DROP TRIGGER fail_admin_grant').run();
+    }
+    expect(
+      (
+        await request('/api/admin-invitations/accept', {
+          ...recipient,
+          email: 'rollback@example.invalid',
+          token,
+        })
+      ).status,
+    ).toBe(201);
+  }, 30000);
 });
 
 describe('club management and atomic audit', () => {

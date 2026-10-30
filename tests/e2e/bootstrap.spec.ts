@@ -30,7 +30,7 @@ test('real Worker: bootstrap, enroll MFA, sign in and recover access', async ({
     testInfo.project.name !== 'chromium',
     'Singleton bootstrap runs once per database',
   );
-  test.setTimeout(60000);
+  test.setTimeout(120000);
   const password = randomBytes(24).toString('hex');
   await page.goto('/');
   await page
@@ -116,6 +116,63 @@ test('real Worker: bootstrap, enroll MFA, sign in and recover access', async ({
     page.getByRole('button', { name: 'Ya aprobaste', exact: true }),
   ).toBeDisabled();
   await expect(page.locator('.club-list li')).toHaveCount(0);
+  // The original administrator creates an invitation; the second person chooses
+  // their own password, enrolls MFA, and completes the outstanding approval.
+  await page
+    .getByLabel('Correo de la persona invitada')
+    .fill('second@example.invalid');
+  await page.getByRole('button', { name: 'Generar invitación' }).click();
+  const invitation = await page.getByLabel('Clave de invitación').inputValue();
+  expect(invitation).toMatch(/^[a-f0-9]{64}$/);
+  const secondContext = await page
+    .context()
+    .browser()!
+    .newContext({
+      extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.42' },
+    });
+  const second = await secondContext.newPage();
+  const secondPassword = randomBytes(24).toString('hex');
+  await second.goto('http://127.0.0.1:5174');
+  await second.getByRole('button', { name: 'Aceptar invitación' }).click();
+  await second.getByLabel('Nombre completo').fill('Segundo administrador');
+  await second.getByLabel('Correo electrónico').fill('second@example.invalid');
+  await second.getByLabel('Contraseña nueva').fill(secondPassword);
+  await second.getByLabel('Repetí la contraseña').fill(secondPassword);
+  await second.getByLabel('Clave de invitación').fill(invitation);
+  await second
+    .getByRole('button', { name: 'Crear cuenta', exact: true })
+    .click();
+  await expect(
+    second.getByText('Cuenta creada.', { exact: false }),
+  ).toBeVisible();
+  await second.getByLabel('Contraseña', { exact: true }).fill(secondPassword);
+  await second.getByRole('button', { name: 'Ingresar', exact: true }).click();
+  await expect(second.getByRole('alert')).toContainText('requiere configurar');
+  expect(
+    (await second.request.get('http://127.0.0.1:5174/api/clubs')).status(),
+  ).toBe(403);
+  await second.getByLabel('Contraseña actual').fill(secondPassword);
+  await second
+    .getByRole('button', { name: 'Configurar MFA', exact: true })
+    .click();
+  await second
+    .getByText('Ingresar la clave manualmente', { exact: true })
+    .click();
+  const secondSecret = (await second.locator('.secret').innerText()).trim();
+  await second.getByLabel('Guardé mis códigos de recuperación').check();
+  await second.getByLabel('Código de activación').fill(totp(secondSecret));
+  await second
+    .getByRole('button', { name: 'Activar MFA', exact: true })
+    .click();
+  await expect(
+    second.getByText('Alta de club: Estrella del Sur'),
+  ).toBeVisible();
+  await second.getByRole('button', { name: 'Aprobar', exact: true }).click();
+  await expect(
+    second.getByText('Segunda aprobación registrada', { exact: false }),
+  ).toBeVisible();
+  await expect(second.locator('.club-list')).toContainText('Estrella del Sur');
+  await secondContext.close();
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole('button', { name: 'Nueva temporada' }).click();
   await page

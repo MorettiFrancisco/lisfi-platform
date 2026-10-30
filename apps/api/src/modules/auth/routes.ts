@@ -8,6 +8,7 @@ import {
   globalRoleAssignments,
   user,
   twoFactor,
+  initialAdminBootstrap,
 } from '../../db/schema';
 import type { Bindings } from '../../env';
 import { createAuth } from './auth';
@@ -15,6 +16,7 @@ import { clubRoutes } from '../clubs/routes';
 import { changeRoutes } from '../changes/routes';
 import { seasonRoutes } from '../seasons/routes';
 import { auditRoutes } from '../audit/routes';
+import { adminInvitationRoutes } from './invitations';
 
 type Auth = ReturnType<typeof createAuth>;
 type Identity = {
@@ -97,10 +99,19 @@ protectedRoutes.get('/me', async (c) => {
               eq(clubs.status, 'ACTIVE'),
             ),
           );
+  const canManageAdmins =
+    identity.isLeagueAdmin &&
+    identity.mfaEnabled &&
+    !!(await createDb(c.env.DB)
+      .select({ id: initialAdminBootstrap.id })
+      .from(initialAdminBootstrap)
+      .where(eq(initialAdminBootstrap.userId, identity.id))
+      .get());
   return c.json({
     user: { id: identity.id, name: identity.name },
     roles: identity.isLeagueAdmin ? ['LEAGUE_ADMIN'] : [],
     mfaRequired: identity.isLeagueAdmin && !identity.mfaEnabled,
+    canManageAdmins,
     clubs: memberships,
   } satisfies MeResponse);
 });
@@ -109,3 +120,4 @@ protectedRoutes.route('/clubs', clubRoutes);
 protectedRoutes.route('/changes', changeRoutes);
 protectedRoutes.route('/seasons', seasonRoutes);
 protectedRoutes.route('/audit-logs', auditRoutes);
+protectedRoutes.route('/admin-invitations', adminInvitationRoutes);

@@ -21,6 +21,19 @@ export const initialAdminBootstrap = sqliteTable(
   (t) => [check('initial_admin_singleton', sql`${t.id} = 1`)],
 );
 
+export const adminInvitations = sqliteTable('admin_invitations', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  email: text('email').notNull(),
+  invitedBy: text('invited_by')
+    .notNull()
+    .references(() => user.id),
+  createdAt: text('created_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  acceptedAt: text('accepted_at'),
+  acceptedUserId: text('accepted_user_id'),
+});
+
 export const clubs = sqliteTable(
   'clubs',
   {

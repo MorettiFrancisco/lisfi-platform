@@ -4,7 +4,14 @@ export const auditQuerySchema = z
     page: z.coerce.number().int().min(1).max(100000).default(1),
     pageSize: z.coerce.number().int().min(1).max(50).default(10),
     resourceType: z
-      .enum(['ALL', 'CLUB', 'CHANGE_REQUEST', 'SEASON'])
+      .enum([
+        'ALL',
+        'CLUB',
+        'CHANGE_REQUEST',
+        'SEASON',
+        'ADMIN_INVITATION',
+        'USER',
+      ])
       .default('ALL'),
     from: z.union([z.iso.date(), z.literal('')]).default(''),
     to: z.union([z.iso.date(), z.literal('')]).default(''),

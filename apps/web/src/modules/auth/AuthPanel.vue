@@ -6,10 +6,18 @@ import MfaSetup from './MfaSetup.vue';
 import ClubsPanel from '../clubs/ClubsPanel.vue';
 import SeasonsPanel from '../seasons/SeasonsPanel.vue';
 import AuditPanel from '../audit/AuditPanel.vue';
+import AdminInvitationPanel from './AdminInvitationPanel.vue';
+import AcceptInvitationPanel from './AcceptInvitationPanel.vue';
 
 const identity = ref<MeResponse | null>(null);
 const stage = ref<
-  'loading' | 'login' | 'mfa' | 'session' | 'unavailable' | 'bootstrap'
+  | 'loading'
+  | 'login'
+  | 'mfa'
+  | 'session'
+  | 'unavailable'
+  | 'bootstrap'
+  | 'invitation'
 >('loading');
 const email = ref('');
 const password = ref('');
@@ -159,13 +167,15 @@ onMounted(restore);
   <section aria-labelledby="access-title" :aria-busy="busy">
     <h2 id="access-title">
       {{
-        stage === 'bootstrap'
-          ? 'Alta del primer administrador'
-          : stage === 'session'
-            ? 'Tu sesión'
-            : stage === 'mfa'
-              ? 'Verificá tu identidad'
-              : 'Ingresá a tu cuenta'
+        stage === 'invitation'
+          ? 'Aceptar invitación'
+          : stage === 'bootstrap'
+            ? 'Alta del primer administrador'
+            : stage === 'session'
+              ? 'Tu sesión'
+              : stage === 'mfa'
+                ? 'Verificá tu identidad'
+                : 'Ingresá a tu cuenta'
       }}
     </h2>
     <p v-if="stage === 'loading'">Comprobando tu sesión…</p>
@@ -173,6 +183,11 @@ onMounted(restore);
     <p v-if="notice">{{ notice }}</p>
     <BootstrapPanel
       v-if="stage === 'bootstrap'"
+      @created="administratorCreated"
+      @cancel="backToLogin"
+    />
+    <AcceptInvitationPanel
+      v-if="stage === 'invitation'"
       @created="administratorCreated"
       @cancel="backToLogin"
     />
@@ -213,6 +228,18 @@ onMounted(restore);
         "
       >
         Alta del primer administrador
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        :disabled="busy"
+        @click="
+          stage = 'invitation';
+          error = '';
+          notice = '';
+        "
+      >
+        Aceptar invitación
       </button>
     </form>
     <form v-if="stage === 'mfa'" @submit.prevent="submit">
@@ -284,6 +311,9 @@ onMounted(restore);
       <p v-else-if="identity.roles.includes('LEAGUE_ADMIN')">
         Autenticación de dos pasos activada.
       </p>
+      <AdminInvitationPanel
+        v-if="!identity.mfaRequired && identity.canManageAdmins"
+      />
       <button
         :disabled="busy || mfaBusy || clubsBusy || seasonsBusy"
         @click="submit"

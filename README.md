@@ -136,9 +136,33 @@ No cargar información personal real ni documentos de menores en desarrollo.
   Debe complementarse con controles de plataforma antes de abrir producción.
 
 El alta inicial usa un flujo separado, deshabilitado por defecto y protegido por
-una clave temporal. Signup público continúa cerrado. Invitaciones, administración
-de privilegios, recuperación por correo y auditoría administrativa general siguen
-pendientes; el alta inicial sí conserva su registro duradero.
+una clave temporal. Signup público continúa cerrado. La persona administradora
+inicial puede invitar a otro administrador como se explica abajo. Las invitaciones
+de representantes, la revocación de privilegios y la recuperación por correo siguen
+pendientes.
+
+### Invitar a otro administrador
+
+1. El administrador inicial inicia sesión y completa MFA. En **Invitar
+   administrador**, ingresa el correo del destinatario y genera una clave.
+2. Comparte la clave y el correo exacto por un canal privado. La clave se muestra
+   una sola vez, vence en una hora y solo puede usarse una vez. No se envía correo
+   automáticamente ni se guarda la clave sin cifrar en la base de datos.
+3. La persona invitada abre **Aceptar invitación**, completa nombre, correo,
+   contraseña propia y clave; después inicia sesión y configura MFA. Hasta completar
+   MFA no puede acceder a funciones administrativas.
+
+Solo el administrador creado en el bootstrap puede emitir invitaciones, y debe
+conservar cuenta activa, rol y MFA verificado tanto al emitir como al aceptar. Esta
+restricción provisional evita que cualquier administrador pueda conceder el rol;
+la designación de otros responsables y la recuperación del acceso elevado siguen
+pendientes de acordar con LISFI. La invitación crea una cuenta nueva: todavía no
+permite promover una cuenta existente. No marca el correo como verificado.
+
+La creación, credencial, rol, consumo de clave y auditoría se guardan en un único
+batch D1. La auditoría identifica al emisor y el recurso sin guardar claves ni
+correo. No hay revocación manual de invitaciones todavía: vencen en una hora y
+dejan de funcionar si el emisor pierde su rol, su cuenta activa o su MFA verificado.
 
 ### Gestión de clubes
 
