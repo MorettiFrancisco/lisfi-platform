@@ -1,6 +1,6 @@
 # Continuidad de LISFI Platform
 
-Estado actualizado el 29 de octubre de 2026, después de `5fbaafc`. El proyecto
+Estado actualizado el 29 de octubre de 2026, después de `c91667d`. El proyecto
 está en desarrollo local: la Etapa 1
 todavía no está cerrada ni se autorizó un despliegue a producción.
 
@@ -49,6 +49,11 @@ todavía no está cerrada ni se autorizó un despliegue a producción.
 - Swagger UI se probó en escritorio y móvil ejecutando `/api/health` sin conexiones
   externas. Una prueba de navegador con Worker y D1 temporales verificó `/api/me`
   desde Swagger con una sesión administrativa y MFA reales.
+- Una prueba de navegador con Worker y D1 temporales completó el alta y MFA de dos
+  administradores, la invitación de un presidente, la invitación de un representante
+  y las dos aprobaciones. Verificó que no había acceso antes de la segunda aprobación.
+  El caso de un representante en varios clubes también se verifica en integración;
+  aún falta probar en navegador dos representantes y varios clubes en un mismo flujo.
 - Las migraciones hasta `0014` se aplicaron a D1 **local**; no se aplicaron en una
   base remota. No hay datos personales reales de prueba ni secretos versionados.
 - Para retomar: instalar Node y pnpm según [README](../README.md), ejecutar

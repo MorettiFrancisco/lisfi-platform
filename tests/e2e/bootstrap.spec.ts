@@ -22,7 +22,7 @@ function totp(secret: string) {
     .padStart(6, '0');
 }
 
-test('real Worker: bootstrap, enroll MFA, sign in and recover access', async ({
+test('real Worker: administrators, MFA, club invitations and approvals', async ({
   page,
 }, testInfo) => {
   // One initial administrator per isolated D1; verify mobile layout in the same flow.
@@ -30,7 +30,7 @@ test('real Worker: bootstrap, enroll MFA, sign in and recover access', async ({
     testInfo.project.name !== 'chromium',
     'Singleton bootstrap runs once per database',
   );
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   const password = randomBytes(24).toString('hex');
   await page.goto('/');
   await page
@@ -189,6 +189,107 @@ test('real Worker: bootstrap, enroll MFA, sign in and recover access', async ({
     second.getByText('Segunda aprobación registrada', { exact: false }),
   ).toBeVisible();
   await expect(second.locator('.club-list')).toContainText('Estrella del Sur');
+  // End-to-end: league invites the president, who invites a representative;
+  // neither approval alone can give the representative access to the club.
+  await second
+    .getByRole('button', { name: 'Ver club Estrella del Sur' })
+    .click();
+  const presidentPanel = second.getByRole('region', {
+    name: 'Invitar presidente',
+  });
+  await presidentPanel
+    .getByLabel('Correo de la persona invitada')
+    .fill('president@example.invalid');
+  await presidentPanel.getByRole('button', { name: 'Generar enlace' }).click();
+  const presidentLink = await presidentPanel
+    .getByLabel('Enlace para compartir por WhatsApp')
+    .inputValue();
+  const presidentContext = await page
+    .context()
+    .browser()!
+    .newContext({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.43' } });
+  const president = await presidentContext.newPage();
+  const presidentPassword = randomBytes(24).toString('hex');
+  await president.goto(presidentLink);
+  await president.getByLabel('Nombre completo').fill('Presidenta de prueba');
+  await president
+    .getByLabel('Correo electrónico')
+    .fill('president@example.invalid');
+  await president.getByLabel('Contraseña nueva').fill(presidentPassword);
+  await president.getByLabel('Repetí la contraseña').fill(presidentPassword);
+  await president.getByRole('button', { name: 'Crear cuenta' }).click();
+  await expect(
+    president.getByText('Cuenta creada.', { exact: false }),
+  ).toBeVisible();
+  await president
+    .getByLabel('Contraseña', { exact: true })
+    .fill(presidentPassword);
+  await president
+    .getByRole('button', { name: 'Ingresar', exact: true })
+    .click();
+  await president
+    .getByRole('button', { name: 'Ver club Estrella del Sur' })
+    .click();
+  const representativePanel = president.getByRole('region', {
+    name: 'Invitar representante',
+  });
+  await representativePanel
+    .getByLabel('Correo de la persona invitada')
+    .fill('delegate@example.invalid');
+  await representativePanel
+    .getByRole('button', { name: 'Generar enlace' })
+    .click();
+  const delegateLink = await representativePanel
+    .getByLabel('Enlace para compartir por WhatsApp')
+    .inputValue();
+  const delegateContext = await page
+    .context()
+    .browser()!
+    .newContext({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.44' } });
+  const delegate = await delegateContext.newPage();
+  const delegatePassword = randomBytes(24).toString('hex');
+  await delegate.goto(delegateLink);
+  await delegate.getByLabel('Nombre completo').fill('Representante de prueba');
+  await delegate
+    .getByLabel('Correo electrónico')
+    .fill('delegate@example.invalid');
+  await delegate.getByLabel('Contraseña nueva').fill(delegatePassword);
+  await delegate.getByLabel('Repetí la contraseña').fill(delegatePassword);
+  await delegate.getByRole('button', { name: 'Crear cuenta' }).click();
+  await delegate
+    .getByLabel('Contraseña', { exact: true })
+    .fill(delegatePassword);
+  await delegate.getByRole('button', { name: 'Ingresar', exact: true }).click();
+  await expect(
+    delegate.getByText('No tenés clubes disponibles', { exact: false }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Ver club Estrella del Sur' }).click();
+  const requestFirst = page
+    .locator('.request-list li')
+    .filter({ hasText: 'Incorporación solicitada' });
+  await requestFirst
+    .getByRole('button', { name: 'Aprobar', exact: true })
+    .click();
+  await expect(requestFirst).toContainText('1/2 aprobaciones');
+  await delegate.reload();
+  await expect(
+    delegate.getByText('No tenés clubes disponibles', { exact: false }),
+  ).toBeVisible();
+  await second.getByRole('button', { name: 'Actualizar solicitudes' }).click();
+  const requestSecond = second
+    .locator('.request-list li')
+    .filter({ hasText: 'Incorporación solicitada' });
+  await requestSecond
+    .getByRole('button', { name: 'Aprobar', exact: true })
+    .click();
+  await expect(requestSecond).toContainText('Aplicada');
+  await delegate.reload();
+  await expect(delegate.locator('.club-list')).toContainText(
+    'Estrella del Sur',
+  );
+  await delegateContext.close();
+  await presidentContext.close();
   await secondContext.close();
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole('button', { name: 'Nueva temporada' }).click();
